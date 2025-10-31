@@ -949,6 +949,7 @@ name = "quantumcomputing"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "pylatexenc" },
     { name = "qiskit", extra = ["visualization"] },
     { name = "qiskit-aer" },
     { name = "qiskit-ibm-runtime" },
@@ -956,6 +957,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "pylatexenc", specifier = ">=2.10" },
     { name = "qiskit", extras = ["visualization"], specifier = ">=2.2.3" },
     { name = "qiskit-aer", specifier = ">=0.17.2" },
     { name = "qiskit-ibm-runtime", specifier = ">=0.43.1" },

@@ -8,4 +8,5 @@ dependencies = [
     "qiskit[visualization]>=2.2.3",
     "qiskit-ibm-runtime>=0.43.1",
     "qiskit-aer>=0.17.2",
+    "pylatexenc>=2.10",
 ]
