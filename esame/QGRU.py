@@ -305,13 +305,13 @@ def main():
         print(f"VRAM disponibile: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
     
     # Parametri (RIDOTTI per velocità)
-    window_size = 3  # Ridotto da 5
-    hidden_dim = 3   # Ridotto da 5
-    n_qubits = 3     # Ridotto da 5
+    window_size = 5  # Ridotto da 5
+    hidden_dim = 5   # Ridotto da 5
+    n_qubits = 2    # Ridotto da 5
     n_layers = 1     # Ridotto da 2
-    batch_size = 512   # Ridotto da 32
+    batch_size = 128   # Ridotto da 32
     epochs = 5       # Ridotto da 20
-    lr = 0.01
+    lr = 0.001
     
     # Carica dati
     print("\n📊 Caricamento dataset...")
@@ -371,6 +371,7 @@ def main():
     print(f"✓ Tempo medio per epoch: {np.mean(qgru_times):.2f}s")
     
     # ==================== CLASSICAL GRU ====================
+    epochs= 100
     print("\n" + "="*60)
     print("🔄 TRAINING CLASSICAL GRU")
     print("="*60)
