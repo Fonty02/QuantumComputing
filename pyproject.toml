@@ -9,4 +9,7 @@ dependencies = [
     "qiskit-ibm-runtime>=0.43.1",
     "qiskit-aer>=0.17.2",
     "pylatexenc>=2.10",
+    "pennylane>=0.43.1",
+    "scikit-learn>=1.8.0",
+    "tqdm>=4.66.0",
 ]
