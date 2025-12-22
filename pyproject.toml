@@ -12,4 +12,5 @@ dependencies = [
     "pennylane>=0.43.1",
     "scikit-learn>=1.8.0",
     "tqdm>=4.66.0",
+    "pennylane-lightning>=0.43.0",
 ]

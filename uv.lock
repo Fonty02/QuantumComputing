@@ -1099,6 +1099,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "pennylane" },
+    { name = "pennylane-lightning" },
     { name = "pylatexenc" },
     { name = "qiskit", extra = ["visualization"] },
     { name = "qiskit-aer" },
@@ -1110,6 +1111,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "pennylane", specifier = ">=0.43.1" },
+    { name = "pennylane-lightning", specifier = ">=0.43.0" },
     { name = "pylatexenc", specifier = ">=2.10" },
     { name = "qiskit", extras = ["visualization"], specifier = ">=2.2.3" },
     { name = "qiskit-aer", specifier = ">=0.17.2" },
