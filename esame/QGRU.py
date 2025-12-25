@@ -11,14 +11,18 @@ import requests
 import io
 import time
 from tqdm import tqdm
+#import scheduler from torch.optim.lr_scheduler
+from torch.optim import lr_scheduler
 
-# ==================== 1. CIRCUITO QUANTISTICO ====================
+# ==================== 1. CIRCUITO QUANTISTICO FLESSIBILE ====================
 class QuantumCircuit:
-    def __init__(self, n_qubits, n_layers):
+    def __init__(self, n_qubits, n_layers, ansatz_type='basic', reuploading=False):
         self.n_qubits = n_qubits
         self.n_layers = n_layers
+        self.ansatz_type = ansatz_type
+        self.reuploading = reuploading
         
-        # Forza CPU per velocità su piccoli circuiti
+        # Selezione device (Lightning è consigliato per velocità)
         try:
             self.dev = qml.device('lightning.qubit', wires=n_qubits)
         except:
@@ -26,19 +30,38 @@ class QuantumCircuit:
             
         @qml.qnode(self.dev, interface='torch')
         def circuit(inputs, weights):
-            # Angle Encoding
-            for i in range(self.n_qubits):
-                qml.RX(inputs[i], wires=i)
-            
-            # Ansatz: Basic Entangler Layers (Fig. 4b del paper)
-            for layer in range(self.n_layers):
+            # Se Re-uploading è False (Paper standard), codifichiamo una volta sola all'inizio
+            if not self.reuploading:
                 for i in range(self.n_qubits):
-                    qml.RX(weights[layer, i], wires=i)
-                # Entanglement ad anello
-                for i in range(self.n_qubits - 1):
-                    qml.CNOT(wires=[i, i + 1])
-                if self.n_qubits > 1:
-                    qml.CNOT(wires=[self.n_qubits - 1, 0])
+                    qml.RX(inputs[i], wires=i)
+            
+            # Loop sui layer
+            for layer in range(self.n_layers):
+                # DATA RE-UPLOADING (Solo per My QGRU)
+                # Reinseriamo l'input prima di ogni layer variazionale
+                if self.reuploading:
+                    for i in range(self.n_qubits):
+                        qml.RX(inputs[i], wires=i)
+                
+                # ANSATZ
+                if self.ansatz_type == 'basic':
+                    # --- Paper Style: Basic Entangler ---
+                    # Pesi shape: (n_layers, n_qubits) -> Qui usiamo weights[layer]
+                    for i in range(self.n_qubits):
+                        qml.RX(weights[layer, i], wires=i)
+                    # Entanglement ad anello
+                    for i in range(self.n_qubits - 1):
+                        qml.CNOT(wires=[i, i + 1])
+                    if self.n_qubits > 1:
+                        qml.CNOT(wires=[self.n_qubits - 1, 0])
+                        
+                elif self.ansatz_type == 'strong':
+                    # --- My QGRU Style: Strongly Entangling ---
+                    # Pesi shape: (n_layers, n_qubits, 3) -> Passiamo la slice del layer
+                    # StronglyEntanglingLayers si aspetta (1, n_qubits, 3) per layer singolo
+                    # quindi passiamo weights[layer] espanso
+                    w_layer = weights[layer].unsqueeze(0) 
+                    qml.StronglyEntanglingLayers(w_layer, wires=range(self.n_qubits))
             
             return [qml.expval(qml.PauliZ(i)) for i in range(self.n_qubits)]
         
@@ -54,32 +77,41 @@ class QuantumCircuit:
             results.append(res)
         return torch.stack(results).float()
 
-# ==================== 2. LAYER IBRIDO (MODIFICATO PER CONFRONTO) ====================
+# ==================== 2. LAYER IBRIDO (CONFIGURABILE) ====================
 class VQCLayer(nn.Module):
-    def __init__(self, input_dim, hidden_dim, n_qubits, n_layers, use_scale_factor=True):
+    def __init__(self, input_dim, hidden_dim, n_qubits, n_layers, 
+                 use_scale_factor=False, ansatz_type='basic', reuploading=False):
         super(VQCLayer, self).__init__()
         self.n_qubits = n_qubits
         self.use_scale_factor = use_scale_factor
         
         self.fc_in = nn.Linear(input_dim, n_qubits)
-        self.qc = QuantumCircuit(n_qubits, n_layers)
-        self.q_params = nn.Parameter(torch.randn(n_layers, n_qubits) * 0.1)
+        
+        # Inizializza circuito
+        self.qc = QuantumCircuit(n_qubits, n_layers, ansatz_type, reuploading)
+        
+        # Gestione parametri in base all'Ansatz
+        if ansatz_type == 'strong':
+            # StronglyEntangling vuole 3 parametri per qubit (Rotazione X, Y, Z)
+            self.q_params = nn.Parameter(torch.randn(n_layers, n_qubits, 3) * 0.1)
+        else:
+            # BasicEntangler vuole 1 parametro per qubit (Rotazione X)
+            self.q_params = nn.Parameter(torch.randn(n_layers, n_qubits) * 0.1)
+            
         self.fc_out = nn.Linear(n_qubits, hidden_dim)
 
-        # IL TUO TRUCCO: Parametro di scala apprendibile
+        # Scale Factor Vettoriale (Uno per qubit) se richiesto
         if self.use_scale_factor:
-            self.scale_factor = nn.Parameter(torch.tensor(1.0))
+            self.scale_factor = nn.Parameter(torch.ones(n_qubits))
 
     def forward(self, x):
         x = self.fc_in(x)
         
         if self.use_scale_factor:
-            # APPROCCIO "MY QGRU": Tanh controllata + Scala
+            # My QGRU: Tanh + Scala Vettoriale
             x = torch.tanh(x) * self.scale_factor 
         else:
-            # APPROCCIO "PAPER QGRU": Nessuna attivazione forzata.
-            # Il layer lineare impara direttamente gli angoli θ.
-            # Poiché Rx è periodica, il network può imparare qualsiasi rotazione.
+            # Paper QGRU: Identity (lascia decidere al layer lineare)
             pass 
         
         x = self.qc.forward(x, self.q_params)
@@ -88,15 +120,23 @@ class VQCLayer(nn.Module):
 
 # ==================== 3. CELLA QGRU ====================
 class QGRUCell(nn.Module):
-    def __init__(self, input_dim, hidden_dim, n_qubits, n_layers, use_scale_factor):
+    def __init__(self, input_dim, hidden_dim, n_qubits, n_layers, 
+                 use_scale_factor, ansatz_type, reuploading):
         super(QGRUCell, self).__init__()
         self.hidden_dim = hidden_dim
         concat_dim = hidden_dim + input_dim
         
-        # Passiamo il flag use_scale_factor ai layer
-        self.vqc_reset = VQCLayer(concat_dim, hidden_dim, n_qubits, n_layers, use_scale_factor)
-        self.vqc_update = VQCLayer(concat_dim, hidden_dim, n_qubits, n_layers, use_scale_factor)
-        self.vqc_output = VQCLayer(concat_dim, hidden_dim, n_qubits, n_layers, use_scale_factor)
+        # Configurazione condivisa per i 3 gate
+        config = {
+            'input_dim': concat_dim, 'hidden_dim': hidden_dim,
+            'n_qubits': n_qubits, 'n_layers': n_layers,
+            'use_scale_factor': use_scale_factor,
+            'ansatz_type': ansatz_type, 'reuploading': reuploading
+        }
+        
+        self.vqc_reset = VQCLayer(**config)
+        self.vqc_update = VQCLayer(**config)
+        self.vqc_output = VQCLayer(**config)
     
     def forward(self, x, h_prev):
         combined = torch.cat([h_prev, x], dim=1)
@@ -112,10 +152,12 @@ class QGRUCell(nn.Module):
 
 # ==================== 4. MODELLO QGRU COMPLETO ====================
 class QGRU(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, n_qubits, n_layers, use_scale_factor=True):
+    def __init__(self, input_dim, hidden_dim, output_dim, n_qubits, n_layers, 
+                 use_scale_factor=False, ansatz_type='basic', reuploading=False):
         super(QGRU, self).__init__()
         self.hidden_dim = hidden_dim
-        self.qgru_cell = QGRUCell(input_dim, hidden_dim, n_qubits, n_layers, use_scale_factor)
+        self.qgru_cell = QGRUCell(input_dim, hidden_dim, n_qubits, n_layers, 
+                                  use_scale_factor, ansatz_type, reuploading)
         self.fc_out = nn.Linear(hidden_dim, output_dim)
     
     def forward(self, x, h_0=None):
@@ -138,7 +180,6 @@ class QGRU(nn.Module):
 class ClassicalGRU(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(ClassicalGRU, self).__init__()
-        # Batch_first=True per coerenza
         self.gru = nn.GRU(input_dim, hidden_dim, batch_first=True)
         self.fc_out = nn.Linear(hidden_dim, output_dim)
     
@@ -159,41 +200,33 @@ class TimeSeriesDataset(Dataset):
 def load_data():
     try:
         url = "https://raw.githubusercontent.com/zhouhaoyi/ETDataset/main/ETT-small/ETTh1.csv"
-        df = pd.read_csv(io.StringIO(requests.get(url, timeout=5).content.decode('utf-8')))
+        print("Scaricamento dataset ETTh1...")
+        df = pd.read_csv(io.StringIO(requests.get(url, timeout=10).content.decode('utf-8')))]
         return df[['HUFL', 'HULL', 'MUFL', 'OT']].values
     except:
-        print("Uso dati sintetici...")
+        print("Fallback su dati sintetici...")
         t = np.linspace(0, 100, 2000)
         return np.column_stack([np.sin(t), np.cos(t), np.sin(t)*np.cos(t), np.sin(t+0.5)])
-import pandas as pd # Assicurati di avere pandas installato
 
-# ... [MANTIENI LE CLASSI QuantumCircuit, VQCLayer, QGRU, ClassicalGRU, Dataset INVARIATE] ...
-
-# ==================== FUNZIONE DI VALUTAZIONE FINALE ====================
 def evaluate_final(model, loader, device):
-    """Calcola MSE e MAE finali sul set di validazione/test"""
     model.eval()
-    mse_loss = 0
-    mae_loss = 0
+    mse_loss, mae_loss = 0, 0
     criterion_mse = nn.MSELoss()
     criterion_mae = nn.L1Loss()
-    
     with torch.no_grad():
         for x, y in loader:
             x, y = x.to(device), y.to(device)
             out, _ = model(x)
             mse_loss += criterion_mse(out, y).item()
             mae_loss += criterion_mae(out, y).item()
-            
-    avg_mse = mse_loss / len(loader)
-    avg_mae = mae_loss / len(loader)
-    return avg_mse, avg_mae
+    return mse_loss / len(loader), mae_loss / len(loader)
 
-# ==================== TRAINING LOOP (AGGIORNATO) ====================
 def train_experiment(model, train_loader, val_loader, epochs, lr, device, name):
     model = model.to(device)
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
+    # Scheduler come da paper (opzionale se poche epoche, ma corretto averlo)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.9)
     
     history = {'train_loss': [], 'val_loss': []}
     
@@ -201,9 +234,6 @@ def train_experiment(model, train_loader, val_loader, epochs, lr, device, name):
     start_total = time.time()
     
     for epoch in range(epochs):
-        ep_start = time.time()
-        
-        # Training
         model.train()
         train_loss = 0
         for x, y in tqdm(train_loader, desc=f"Ep {epoch+1}/{epochs}", leave=False):
@@ -214,10 +244,10 @@ def train_experiment(model, train_loader, val_loader, epochs, lr, device, name):
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
-            
+        
+        scheduler.step()
         avg_train = train_loss / len(train_loader)
         
-        # Validation
         model.eval()
         val_loss = 0
         with torch.no_grad():
@@ -229,25 +259,24 @@ def train_experiment(model, train_loader, val_loader, epochs, lr, device, name):
         history['train_loss'].append(avg_train)
         history['val_loss'].append(avg_val)
         
-        print(f"Ep {epoch+1} | Train: {avg_train:.5f} | Val: {avg_val:.5f} | Time: {time.time()-ep_start:.1f}s")
+        print(f"Ep {epoch+1} | Train: {avg_train:.5f} | Val: {avg_val:.5f}")
     
     total_time = time.time()-start_total
     print(f"Total Time {name}: {total_time:.1f}s")
     return history, total_time
 
-# ==================== MAIN AGGIORNATO ====================
+# ==================== MAIN ====================
 def main():
-    # Setup Device
-    device = torch.device("cpu") 
+    device = torch.device("cpu") # CPU consigliata per simulazioni piccoli circuiti
     print(f"Device: {device}")
     
-    # Parametri (Paper: Q=5, L=2, H=5)
+    # --- IPERPARAMETRI (Specifiche Paper) ---
     WINDOW_SIZE = 5
     HIDDEN_DIM = 5  
     N_QUBITS = 5    
     N_LAYERS = 2    
-    BATCH_SIZE = 128
-    EPOCHS = 15       # Metti almeno 3 epoche per vedere una linea nel grafico
+    BATCH_SIZE = 64
+    EPOCHS = 1      # Aumenta per risultati migliori (paper usa >100)
     LR = 0.005
 
     # Dati
@@ -258,87 +287,86 @@ def main():
     data_scaled = scaler.transform(raw)
     
     train_ds = TimeSeriesDataset(data_scaled[:split_idx], WINDOW_SIZE)
-    val_ds = TimeSeriesDataset(data_scaled[split_idx:], WINDOW_SIZE) # Usiamo Val come Test per semplicità
+    val_ds = TimeSeriesDataset(data_scaled[split_idx:], WINDOW_SIZE)
     
     train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
     val_dl = DataLoader(val_ds, batch_size=BATCH_SIZE)
     
-    dims = (raw.shape[1]-1, HIDDEN_DIM, 1)
-    
+    dims = (raw.shape[1]-1, HIDDEN_DIM, 1) # (Input, Hidden, Output)
     results_list = []
 
-    # --- 1. MY QGRU ---
-    my_qgru = QGRU(*dims, N_QUBITS, N_LAYERS, use_scale_factor=True)
-    hist_my, time_my = train_experiment(my_qgru, train_dl, val_dl, EPOCHS, LR, device, "MY QGRU (Scaled)")
+    # --- 1. MY QGRU (Potenziata: Strong Ent. + Re-upload + Scaling) ---
+    print("\n[1/3] Avvio My QGRU (StronglyEntangling + Re-uploading)...")
+    my_qgru = QGRU(*dims, N_QUBITS, N_LAYERS, 
+                   use_scale_factor=True, 
+                   ansatz_type='strong', 
+                   reuploading=True)
+    hist_my, time_my = train_experiment(my_qgru, train_dl, val_dl, EPOCHS, LR, device, "MY QGRU")
     mse_my, mae_my = evaluate_final(my_qgru, val_dl, device)
     
     results_list.append({
-        "Model": "My QGRU (Scaled)",
-        "Test MSE": mse_my,
-        "Test MAE": mae_my,
-        "Training Time (s)": time_my,
-        "Scale Reset": my_qgru.qgru_cell.vqc_reset.scale_factor.item(),
-        "Scale Update": my_qgru.qgru_cell.vqc_update.scale_factor.item(),
-        "Scale Output": my_qgru.qgru_cell.vqc_output.scale_factor.item()
+        "Model": "My QGRU (Optimized)",
+        "Test MSE": mse_my, "Test MAE": mae_my, "Time (s)": time_my
     })
-    
-    # --- 2. PAPER QGRU ---
-    paper_qgru = QGRU(*dims, N_QUBITS, N_LAYERS, use_scale_factor=False)
+
+    # --- 2. PAPER QGRU (Basic Ent. + No Re-upload + No Scaling) ---
+    print("\n[2/3] Avvio Paper QGRU (BasicEntangler Standard)...")
+    paper_qgru = QGRU(*dims, N_QUBITS, N_LAYERS, 
+                      use_scale_factor=False, 
+                      ansatz_type='basic', 
+                      reuploading=False)
     hist_paper, time_paper = train_experiment(paper_qgru, train_dl, val_dl, EPOCHS, LR, device, "PAPER QGRU")
     mse_paper, mae_paper = evaluate_final(paper_qgru, val_dl, device)
     
     results_list.append({
         "Model": "Paper QGRU",
-        "Test MSE": mse_paper,
-        "Test MAE": mae_paper,
-        "Training Time (s)": time_paper,
-        "Scale Reset": "N/A", "Scale Update": "N/A", "Scale Output": "N/A"
+        "Test MSE": mse_paper, "Test MAE": mae_paper, "Time (s)": time_paper
     })
     
     # --- 3. CLASSICAL GRU ---
+    print("\n[3/3] Avvio Classical GRU...")
     classic_gru = ClassicalGRU(*dims)
     hist_classic, time_classic = train_experiment(classic_gru, train_dl, val_dl, EPOCHS, LR, device, "CLASSICAL GRU")
     mse_classic, mae_classic = evaluate_final(classic_gru, val_dl, device)
     
     results_list.append({
         "Model": "Classical GRU",
-        "Test MSE": mse_classic,
-        "Test MAE": mae_classic,
-        "Training Time (s)": time_classic,
-        "Scale Reset": "N/A", "Scale Update": "N/A", "Scale Output": "N/A"
+        "Test MSE": mse_classic, "Test MAE": mae_classic, "Time (s)": time_classic
     })
     
     # --- SALVATAGGIO CSV ---
     df_results = pd.DataFrame(results_list)
-    df_results.to_csv("risultati_finali.csv", index=False)
-    print("\n✅ Risultati salvati in 'risultati_finali.csv'")
-    print(df_results[['Model', 'Test MSE', 'Test MAE']])
+    df_results.to_csv("risultati_finali_reupload.csv", index=False)
+    print("\n✅ Risultati salvati in 'risultati_finali_reupload.csv'")
+    print(df_results)
     
-    # --- PLOT FIXATO (Con markers) ---
+    # --- PLOT ---
     plt.figure(figsize=(12, 5))
     
+    # Train Loss
     plt.subplot(1, 2, 1)
-    # Aggiunto marker='o' per vedere i punti anche se le epoche sono poche
-    plt.plot(hist_my['train_loss'], label='My QGRU', marker='o') 
-    plt.plot(hist_paper['train_loss'], label='Paper QGRU', marker='s', linestyle='--')
-    plt.plot(hist_classic['train_loss'], label='Classical', marker='^', linestyle=':')
-    plt.title(f"Train Loss (Epochs={EPOCHS})")
+    plt.plot(hist_my['train_loss'], label='My QGRU (Strong+ReUp)', marker='o', color='blue')
+    plt.plot(hist_paper['train_loss'], label='Paper QGRU (Basic)', marker='s', linestyle='--', color='green')
+    plt.plot(hist_classic['train_loss'], label='Classic GRU', marker='^', linestyle=':', color='red')
+    plt.title("Training Loss")
     plt.xlabel("Epoch")
     plt.ylabel("MSE")
     plt.legend()
     plt.grid(alpha=0.3)
     
+    # Val Loss
     plt.subplot(1, 2, 2)
-    plt.plot(hist_my['val_loss'], label='My QGRU', marker='o')
-    plt.plot(hist_paper['val_loss'], label='Paper QGRU', marker='s', linestyle='--')
-    plt.plot(hist_classic['val_loss'], label='Classical', marker='^', linestyle=':')
-    plt.title("Val Loss")
+    plt.plot(hist_my['val_loss'], label='My QGRU', marker='o', color='blue')
+    plt.plot(hist_paper['val_loss'], label='Paper QGRU', marker='s', linestyle='--', color='green')
+    plt.plot(hist_classic['val_loss'], label='Classic GRU', marker='^', linestyle=':', color='red')
+    plt.title("Validation Loss")
     plt.xlabel("Epoch")
     plt.legend()
     plt.grid(alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig('comparison_plot.png')
+    plt.savefig('comparison_reupload_strong.png')
+    plt.show()
 
 if __name__ == "__main__":
     main()
