@@ -70,8 +70,10 @@ class QLSTMTensorRing(nn.Module):
         # Define the Variational Quantum Circuit (VQC) function
         def VQC(features, weights, wires_type):
             # Encode features into rotation parameters
-            ry_params = [torch.arctan(feature) for feature in features[0]]
-            rz_params = [torch.arctan((feature) ** 2) for feature in features[0]]
+            if features.ndim == 1:
+                features = features.unsqueeze(0)
+            ry_params = [torch.arctan(features[:, i]) for i in range(self.n_qubits)]
+            rz_params = [torch.arctan((features[:, i]) ** 2) for i in range(self.n_qubits)]
             
             # Apply Hadamard, RY, and RZ gates to each qubit
             for i in range(self.n_qubits):

@@ -55,7 +55,7 @@ total_features = X_train.shape[2] # Target + Covariate
 hidden_dim = 4
 n_qubits = 4
 n_qlayers = 1
-epochs = 30
+epochs = 1000
 learning_rate = 0.05
 
 # --- 2. TRAINING MODELLO 1: STANDARD QLSTM ---

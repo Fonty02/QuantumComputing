@@ -78,8 +78,10 @@ class QLSTM(nn.Module):
             # Preproccess input data to encode the initial state.
             # qml.templates.AngleEmbedding(features, wires=wires_type)
             # Feature map blocks
-            ry_params = [torch.arctan(feature) for feature in features[0]]
-            rz_params = [torch.arctan((feature) ** 2) for feature in features[0]]
+            if features.ndim == 1:
+                features = features.unsqueeze(0)
+            ry_params = [torch.arctan(features[:, i]) for i in range(self.n_qubits)]
+            rz_params = [torch.arctan((features[:, i]) ** 2) for i in range(self.n_qubits)]
             for i in range(self.n_qubits):
                 qml.Hadamard(wires=wires_type[i])
                 qml.RY(ry_params[i], wires=wires_type[i])

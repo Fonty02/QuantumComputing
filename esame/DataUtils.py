@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import torch
+from sklearn.preprocessing import MinMaxScaler
 
 def get_traffic_dataset(window_size=4, train_samples=-1):
     """
@@ -45,7 +46,8 @@ def get_traffic_dataset(window_size=4, train_samples=-1):
     # 3. Slicing for "Short Time Series" (Quantum Simulation)
     # We take only a consecutive subset (e.g., the first 300 hours)
     # This drastically reduces the training time of the quantum circuit.
-    df_short = df_subset.iloc[:train_samples + window_size + 10]
+    if train_samples!= -1:
+        df_short = df_subset.iloc[:train_samples + window_size + 10]
     
     print(f"Dataset reduced to {len(df_short)} samples for quantum simulation.")
 
