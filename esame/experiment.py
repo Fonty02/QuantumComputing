@@ -168,7 +168,7 @@ total_features = X_all.shape[2]  # Target + Covariate
 hidden_dim = 4
 n_qubits = 4
 n_qlayers = 1
-epochs = 100
+epochs = 500
 learning_rate = 0.001
 
 # --- 2. SPLIT TRAIN/TEST ---
