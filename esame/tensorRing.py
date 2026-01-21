@@ -5,8 +5,14 @@ import pennylane as qml
 
 def tensor_ring(num_qubits, reps=1):
     """
-    Tensor Ring ansatz circuit.
-    Returns a circuit function and the number of parameters.
+    Constructs a Full Entanglement Tensor Ring quantum circuit.
+
+    Args:
+        num_qubits (int): The number of qubits in the circuit.
+        **kwargs: Additional keyword arguments to be passed to the
+        RealAmplitudes.
+    Returns:
+        a circuit function and the number of parameters.
     """
     def circuit(params):
         param_idx = 0
