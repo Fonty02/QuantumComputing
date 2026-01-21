@@ -1,7 +1,7 @@
 import numpy as np
 import pennylane as qml
 
-from tensorRing import tensor_ring
+from esame.tensorRing import tensor_ring
 
 
 def main():
