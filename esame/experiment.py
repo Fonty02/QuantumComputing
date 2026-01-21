@@ -1,10 +1,55 @@
+import os
+import csv
+import time
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import matplotlib.pyplot as plt
-import time
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from hybridArchitecture import HybridQuantumAttentionModel
+from QLSTM import QShallowRegressionLSTM
+from QLSTMTensorRing import QShallowRegressionLSTMTensorRing
 from DataUtils import get_traffic_dataset
+
+
+
+EXPERIMENTS = {
+    "experiment_1": {
+        "name":"QLSTM standard",
+        "model_type":"QLSTM",
+        "num_layer_tensor_ring":0, #since we are not using tensor ring
+        "useAttention":False
+    },
+    "experiment_2": {
+        "name":"QLSTM standard with Attention",
+        "model_type":"QLSTM",
+        "num_layer_tensor_ring":0, #since we are not using tensor ring
+        "useAttention":True
+    },
+    "experiment_3": {
+        "name":"QLSTM Tensor Ring 1 layer",
+        "model_type":"TensorRing",
+        "num_layer_tensor_ring":1, #number of tensor ring layers
+        "useAttention":False
+    },
+    "experiment_4": {
+        "name":"QLSTM Tensor Ring 1 layer with Attention",
+        "model_type":"TensorRing",
+        "num_layer_tensor_ring":1, #number of tensor ring layers
+        "useAttention":True
+    },
+    "experiment_5": {
+        "name":"QLSTM Tensor Ring 2 layers",
+        "model_type":"TensorRing",
+        "num_layer_tensor_ring":2, #number of tensor ring layers
+        "useAttention":False
+    },
+    "experiment_6": {
+        "name":"QLSTM Tensor Ring 2 layers with Attention",
+        "model_type":"TensorRing",
+        "num_layer_tensor_ring":2, #number of tensor ring layers
+        "useAttention":True
+    },
+}
 
 
 def train_model(model, X_train, y_train, epochs=20, lr=0.01, name="Model"):
@@ -43,76 +88,144 @@ def train_model(model, X_train, y_train, epochs=20, lr=0.01, name="Model"):
     print(f"Training completato in {elapsed:.2f} secondi.")
     return losses, model
 
+
+def evaluate_regression(y_true, y_pred):
+    y_true_np = y_true.detach().cpu().numpy()
+    y_pred_np = y_pred.detach().cpu().numpy()
+
+    mse = mean_squared_error(y_true_np, y_pred_np)
+    rmse = mse ** 0.5
+    mae = mean_absolute_error(y_true_np, y_pred_np)
+    r2 = r2_score(y_true_np, y_pred_np)
+    mape = float((abs((y_true_np - y_pred_np) / (y_true_np + 1e-8))).mean()) * 100.0
+
+    return {
+        "mse": float(mse),
+        "rmse": float(rmse),
+        "mae": float(mae),
+        "r2": float(r2),
+        "mape": float(mape),
+    }
+
+
+def time_series_split(X, y, test_ratio=0.2):
+    split_idx = int(len(X) * (1 - test_ratio))
+    X_train, X_test = X[:split_idx], X[split_idx:]
+    y_train, y_test = y[:split_idx], y[split_idx:]
+    return X_train, X_test, y_train, y_test
+
+
+def build_model(
+    config,
+    total_features,
+    hidden_dim,
+    n_qubits,
+    default_n_qlayers,
+    backend,
+):
+    model_type = config["model_type"]
+    use_attention = config["useAttention"]
+    num_layer_tensor_ring = config["num_layer_tensor_ring"]
+
+    if use_attention:
+        n_qlayers = default_n_qlayers
+        if model_type == "TensorRing":
+            n_qlayers = max(1, num_layer_tensor_ring)
+
+        return HybridQuantumAttentionModel(
+            total_input_features=total_features,
+            hidden_dim=hidden_dim,
+            n_qubits=n_qubits,
+            n_qlayers=n_qlayers,
+            model_type=model_type,
+            backend=backend,
+        )
+
+    if model_type == "TensorRing":
+        return QShallowRegressionLSTMTensorRing(
+            num_sensors=total_features,
+            hidden_units=hidden_dim,
+            n_qubits=n_qubits,
+            n_qlayers=max(1, num_layer_tensor_ring),
+        )
+
+    return QShallowRegressionLSTM(
+        num_sensors=total_features,
+        hidden_units=hidden_dim,
+        n_qubits=n_qubits,
+        n_qlayers=default_n_qlayers,
+    )
+
 # --- CONFIGURAZIONE & CARICAMENTO DATI ---
 
 # 1. Carichiamo i dati (Usa la funzione get_traffic_dataset definita prima)
 # Usiamo un subset piccolo (200 campioni) per velocità, dato che è una simulazione quantistica
 print("Caricamento Dataset...")
-X_train, y_train, scaler = get_traffic_dataset(window_size=4, train_samples=200)
+X_all, y_all, scaler = get_traffic_dataset(window_size=4, train_samples=300)
 
 # Parametri Modello
-total_features = X_train.shape[2] # Target + Covariate
+total_features = X_all.shape[2]  # Target + Covariate
 hidden_dim = 4
 n_qubits = 4
 n_qlayers = 1
 epochs = 100
 learning_rate = 0.001
 
-# --- 2. TRAINING MODELLO 1: STANDARD QLSTM ---
-model_standard = HybridQuantumAttentionModel(
-    total_input_features=total_features,
-    hidden_dim=hidden_dim,
-    n_qubits=n_qubits,
-    n_qlayers=n_qlayers,
-    model_type='QLSTM',       # <--- Seleziona Standard
-    backend='default.qubit'
-)
+# --- 2. SPLIT TRAIN/TEST ---
+X_train, X_test, y_train, y_test = time_series_split(X_all, y_all, test_ratio=0.3)
 
-losses_standard, model_standard = train_model(
-    model_standard, X_train, y_train, epochs=epochs, lr=learning_rate, name="Standard QLSTM"
-)
+results = []
 
-# --- 3. TRAINING MODELLO 2: TENSOR RING QLSTM ---
-model_tensor = HybridQuantumAttentionModel(
-    total_input_features=total_features,
-    hidden_dim=hidden_dim,
-    n_qubits=n_qubits,
-    n_qlayers=n_qlayers,
-    model_type='TensorRing',  # <--- Seleziona Tensor Ring
-    backend='default.qubit'
-)
+for exp_id, config in EXPERIMENTS.items():
+    model = build_model(
+        config=config,
+        total_features=total_features,
+        hidden_dim=hidden_dim,
+        n_qubits=n_qubits,
+        default_n_qlayers=n_qlayers,
+        backend="default.qubit",
+    )
 
-losses_tensor, model_tensor = train_model(
-    model_tensor, X_train, y_train, epochs=epochs, lr=learning_rate, name="TensorRing QLSTM"
-)
+    losses, model = train_model(
+        model,
+        X_train,
+        y_train,
+        epochs=epochs,
+        lr=learning_rate,
+        name=config["name"],
+    )
 
-# --- 4. VISUALIZZAZIONE RISULTATI ---
+    model.eval()
+    with torch.no_grad():
+        preds = model(X_test)
 
-# Plot Loss Comparison
-plt.figure(figsize=(10, 5))
-plt.plot(losses_standard, label='Standard QLSTM Loss', linestyle='--')
-plt.plot(losses_tensor, label='TensorRing QLSTM Loss')
-plt.title('Confronto Loss durante il Training')
-plt.xlabel('Epochs')
-plt.ylabel('MSE Loss')
-plt.legend()
-plt.grid(True)
-plt.savefig('training_comparison.png')
-plt.show()
+    metrics = evaluate_regression(y_test, preds)
 
-# Plot Predictions (sul Training Set per verifica)
-model_standard.eval()
-model_tensor.eval()
-with torch.no_grad():
-    pred_standard = model_standard(X_train).numpy()
-    pred_tensor = model_tensor(X_train).numpy()
-    actual = y_train.numpy()
+    results.append({
+        "name": config["name"],
+        "modelType": config["model_type"],
+        "num_layer_tensor_ring": config["num_layer_tensor_ring"],
+        "useAttention": config["useAttention"],
+        **metrics,
+    })
 
-plt.figure(figsize=(12, 6))
-plt.plot(actual, label='Actual Data', color='black', alpha=0.6)
-plt.plot(pred_standard, label='Standard QLSTM Pred', linestyle='--')
-plt.plot(pred_tensor, label='TensorRing QLSTM Pred')
-plt.title('Confronto Predizioni (Training Set)')
-plt.legend()
-plt.savefig('prediction_comparison.png')
-plt.show()
+# --- 3. SALVATAGGIO RISULTATI ---
+output_path = os.path.join(os.path.dirname(__file__), "experiment_results.csv")
+fieldnames = [
+    "name",
+    "modelType",
+    "num_layer_tensor_ring",
+    "useAttention",
+    "mse",
+    "rmse",
+    "mae",
+    "r2",
+    "mape",
+]
+
+with open(output_path, mode="w", newline="", encoding="utf-8") as csv_file:
+    writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(results)
+
+print(f"Risultati salvati in: {output_path}")
