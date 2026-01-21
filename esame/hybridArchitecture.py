@@ -4,45 +4,44 @@ import torch.nn.functional as F
 from QLSTM import QLSTM
 from QLSTMTensorRing import QLSTMTensorRing
 
-class HybridArchitecture(nn.Module):
+class AttentionLayer(nn.Module):
     """
-    Classical Attention Mechanism.
-    Updated to handle dynamic input dimensions (QLSTM state + Raw Covariates).
+    Hybrid Architecture using Vaswani Multi-Head Attention.
+    This layer applies multi-head self-attention to input sequences and extracts
+    a context vector from the last time step.
     """
-    def __init__(self, input_dim):
-        super(HybridArchitecture, self).__init__()
-        # The attention layer maps the combined input (Hidden + Covariates) to a score.
-        self.W_q = nn.Linear(input_dim, input_dim)
-        self.v = nn.Linear(input_dim, 1, bias=False)
+    def __init__(self, input_dim, num_heads=1):
+        super(AttentionLayer, self).__init__()
+        
+        # Initialize multi-head attention module
+        self.mha = nn.MultiheadAttention(embed_dim=input_dim, 
+                                         num_heads=num_heads, 
+                                         batch_first=True)
+        
+        # Initialize layer normalization
+        self.norm = nn.LayerNorm(input_dim)
 
     def forward(self, x):
         """
-        :param x: Combined sequence with shape (Batch, Seq_Len, Hidden_Dim + Covariates)
+        :param x: Input tensor (Batch, Seq_Len, Features)
         :return: context_vector, attention_weights
         """
-        # Score calculation: e_t = v * tanh(W * x_t)
-        energy = torch.tanh(self.W_q(x)) 
-        scores = self.v(energy) # Shape: (Batch, Seq_Len, 1)
+        # Apply multi-head attention to the input
+        attn_output, attn_weights = self.mha(query=x, key=x, value=x)
         
-        # Softmax over the time dimension
-        attention_weights = F.softmax(scores, dim=1)
+        # Apply residual connection and layer normalization
+        x = self.norm(x + attn_output)
+        # Extract the context vector from the last time step
+        context_vector = x[:, -1, :] 
         
-        # Context vector is the weighted sum of the inputs
-        context_vector = torch.sum(attention_weights * x, dim=1)
-        
-        return context_vector, attention_weights
+        return context_vector, attn_weights
 
 
 class HybridQuantumAttentionModel(nn.Module):
     """
-    Hybrid Architecture with Direct Covariate Pass-Through.
-    
-    Structure:
-    1. Main feature (Target) -> Quantum LSTM
-    2. Other features (Covariates) -> DIRECTLY to Concatenation
-    3. Concatenation (Quantum State + Raw Covariates)
-    4. Classical Attention
-    5. Regression Head
+    Hybrid Architecture combining Quantum LSTM and Attention Mechanism.
+    This model processes time series data by using a quantum LSTM for the main feature
+    and incorporating covariates through a multi-head attention layer for prediction.
     """
     def __init__(self, 
                  total_input_features, 
@@ -50,13 +49,14 @@ class HybridQuantumAttentionModel(nn.Module):
                  n_qubits=4, 
                  n_qlayers=1, 
                  model_type='QLSTM',
-                 backend='default.qubit'):
+                 backend='default.qubit',
+                 num_heads=1):
         super(HybridQuantumAttentionModel, self).__init__()
         
         self.hidden_dim = hidden_dim
         self.model_type = model_type
         
-        # --- Branch A: Quantum LSTM for the Main Feature ---
+        # Initialize Quantum LSTM for the main feature (target)
         if model_type == 'TensorRing':
             self.q_lstm = QLSTMTensorRing(
                 input_size=1,
@@ -76,44 +76,44 @@ class HybridQuantumAttentionModel(nn.Module):
                 backend=backend
             )
 
-        # Count covariates
+        # Calculate number of covariates (additional features)
         self.num_covariates = total_input_features - 1
         
-        # --- Dimensions for Attention ---
-        # The input to the attention mechanism is the concatenation of:
-        # 1. QLSTM hidden state (hidden_dim)
-        # 2. Raw covariate features (num_covariates)
+        # Calculate input dimension for attention layer
         self.attention_input_dim = hidden_dim + self.num_covariates
         
-        self.attention = HybridArchitecture(self.attention_input_dim)
+
+        if self.attention_input_dim % num_heads != 0:
+            print(f"Warning: attention_input_dim {self.attention_input_dim} not divisible by num_heads {num_heads}. Setting num_heads=1.")
+            num_heads = 1
         
-        # --- Prediction Head ---
+        # Initialize attention layer
+        self.attention = AttentionLayer(self.attention_input_dim, num_heads=num_heads)
+        
+        # Initialize regression head for final prediction
         self.regressor = nn.Linear(self.attention_input_dim, 1)
 
     def forward(self, x):
         """
         :param x: Input tensor (Batch, Seq, Total_Features)
         """
-        # 1. Split the data
-        x_target = x[:, :, 0:1] # The univariate target sequence
+        # 1. Split the input data into target and covariates
+        x_target = x[:, :, 0:1]  # Extract target feature (first column)
         
-        # 2. Process Target with Quantum LSTM
-        q_out, _ = self.q_lstm(x_target) # Shape: (Batch, Seq, Hidden_Dim)
+        # 2. Process target feature with Quantum LSTM
+        q_out, _ = self.q_lstm(x_target)  # Output: (Batch, Seq, Hidden_Dim)
         
         combined_features = q_out
 
-        # 3. Direct Pass of Covariates (Concatenation)
+        # 3. Concatenate covariates directly if present
         if self.num_covariates > 0:
-            x_covariates = x[:, :, 1:] # Shape: (Batch, Seq, Num_Covariates)
-            
-            # Concatenate along the feature dimension (dim=2)
-            # Result Shape: (Batch, Seq, Hidden_Dim + Num_Covariates)
-            combined_features = torch.cat((q_out, x_covariates), dim=2)
+            x_covariates = x[:, :, 1:]  # Extract covariates (remaining columns)
+            combined_features = torch.cat((q_out, x_covariates), dim=2)  # Concatenate along feature dimension
 
-        # 4. Apply Attention on the Combined Features
+        # 4. Apply attention mechanism (Vaswani multi-head attention)
         context_vector, attn_weights = self.attention(combined_features)
         
-        # 5. Final Prediction
+        # 5. Generate final prediction using regression head
         prediction = self.regressor(context_vector)
         
-        return prediction.flatten()
+        return prediction.flatten()  # Return flattened predictions

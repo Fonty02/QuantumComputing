@@ -12,7 +12,7 @@ def train_model(model, X_train, y_train, epochs=20, lr=0.01, name="Model"):
     Funzione generica per addestrare un modello PyTorch
     """
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.AdamW(model.parameters(), lr=lr)
     
     losses = []
     
@@ -55,8 +55,8 @@ total_features = X_train.shape[2] # Target + Covariate
 hidden_dim = 4
 n_qubits = 4
 n_qlayers = 1
-epochs = 1000
-learning_rate = 0.05
+epochs = 100
+learning_rate = 0.001
 
 # --- 2. TRAINING MODELLO 1: STANDARD QLSTM ---
 model_standard = HybridQuantumAttentionModel(
