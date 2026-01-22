@@ -1,16 +1,27 @@
+"""
+Quantum Long Short-Term Memory (QLSTM) Implementation.
+
+This module provides a quantum-enhanced LSTM using Variational Quantum Circuits (VQC)
+for the forget, input, update, and output gates.
+"""
+
 import torch
 import torch.nn as nn
 import pennylane as qml
 import numpy as np
 
+
 def create_window(df: list, window_size=3):
     """
-    function used to create the window for forecasting task
-    :param df: matrix containing all the data for all the weight
-    :param window_size: window size for forecasting
-    :return: df: dataframe containing all data for forecasting
+    Create sliding windows for time series forecasting.
+    
+    Args:
+        df: Input data sequence
+        window_size: Size of each window
+        
+    Returns:
+        Tuple of (X, y) arrays for training
     """
-
     X = []
     y = []
 
@@ -26,6 +37,13 @@ def create_window(df: list, window_size=3):
 
 
 class QLSTM(nn.Module):
+    """
+    Quantum LSTM with Variational Quantum Circuits.
+    
+    Replaces classical gate computations with parameterized quantum circuits
+    using data re-uploading and trainable variational layers.
+    """
+    
     def __init__(self,
                  input_size,
                  hidden_size,
@@ -37,14 +55,14 @@ class QLSTM(nn.Module):
                  return_state=False,
                  backend="default.qubit"):
         super(QLSTM, self).__init__()
+        
         self.n_inputs = input_size
         self.hidden_size = hidden_size
         self.concat_size = self.n_inputs + self.hidden_size
         self.n_qubits = n_qubits
         self.n_qlayers = n_qlayers
         self.n_vrotations = n_vrotations
-        self.backend = backend  # "default.qubit", "qiskit.basicaer", "qiskit.ibm"
-
+        self.backend = backend
         self.batch_first = batch_first
         self.return_sequences = return_sequences
         self.return_state = return_state
@@ -60,34 +78,29 @@ class QLSTM(nn.Module):
         self.dev_output = qml.device(self.backend, wires=self.wires_output)
 
         def ansatz(params, wires_type):
-            # Entangling layer.
+            """Variational ansatz with entangling and rotation layers."""
             for i in range(1, 3):
                 for j in range(self.n_qubits):
-                    if j + i < self.n_qubits:
-                        qml.CNOT(wires=[wires_type[j], wires_type[j + i]])
-                    else:
-                        qml.CNOT(wires=[wires_type[j], wires_type[j + i - self.n_qubits]])
+                    target = j + i if j + i < self.n_qubits else j + i - self.n_qubits
+                    qml.CNOT(wires=[wires_type[j], wires_type[target]])
 
-            # Variational layer.
             for i in range(self.n_qubits):
                 qml.RX(params[0][i], wires=wires_type[i])
                 qml.RY(params[1][i], wires=wires_type[i])
                 qml.RZ(params[2][i], wires=wires_type[i])
 
         def VQC(features, weights, wires_type):
-            # Preproccess input data to encode the initial state.
-            # qml.templates.AngleEmbedding(features, wires=wires_type)
-            # Feature map blocks
+            """Variational Quantum Circuit with feature encoding and variational layers."""
             if features.ndim == 1:
                 features = features.unsqueeze(0)
             ry_params = [torch.arctan(features[:, i]) for i in range(self.n_qubits)]
             rz_params = [torch.arctan((features[:, i]) ** 2) for i in range(self.n_qubits)]
+            
             for i in range(self.n_qubits):
                 qml.Hadamard(wires=wires_type[i])
                 qml.RY(ry_params[i], wires=wires_type[i])
                 qml.RZ(rz_params[i], wires=wires_type[i])
 
-            # Variational block. (ansatz --> line 62)
             qml.layer(ansatz, self.n_qlayers, weights, wires_type=wires_type)
 
         def _circuit_forget(inputs, weights):
@@ -115,7 +128,6 @@ class QLSTM(nn.Module):
         self.qlayer_output = qml.QNode(_circuit_output, self.dev_output, interface="torch")
 
         weight_shapes = {"weights": (self.n_qlayers, self.n_vrotations, self.n_qubits)}
-        # print(f"weight_shapes = (n_qlayers, n_vrotations, n_qubits) = ({self.n_qlayers}, {self.n_vrotations}, {self.n_qubits})")
 
         self.clayer_in = torch.nn.Linear(self.concat_size, self.n_qubits)
         self.VQC = {
@@ -125,63 +137,65 @@ class QLSTM(nn.Module):
             'output': qml.qnn.TorchLayer(self.qlayer_output, weight_shapes)
         }
         self.clayer_out = torch.nn.Linear(self.n_qubits, self.hidden_size)
-        # self.clayer_out = [torch.nn.Linear(n_qubits, self.hidden_size) for _ in range(4)]
 
     def forward(self, x, init_states=None):
-        '''
-        x.shape is (batch_size, seq_length, feature_size)
-        recurrent_activation -> sigmoid
-        activation -> tanh
-        '''
-        if self.batch_first is True:
-            batch_size, seq_length, features_size = x.size()
+        """
+        Forward pass through the QLSTM.
+        
+        Args:
+            x: Input tensor of shape (batch, seq_len, features) if batch_first=True
+            init_states: Optional tuple of (h_0, c_0) initial states
+            
+        Returns:
+            Tuple of (hidden_sequence, (h_n, c_n))
+        """
+        if self.batch_first:
+            batch_size, seq_length, _ = x.size()
         else:
-            seq_length, batch_size, features_size = x.size()
+            seq_length, batch_size, _ = x.size()
 
         hidden_seq = []
+        
         if init_states is None:
-            h_t = torch.zeros(batch_size, self.hidden_size)  # hidden state (output)
-            c_t = torch.zeros(batch_size, self.hidden_size)  # cell state
+            h_t = torch.zeros(batch_size, self.hidden_size)
+            c_t = torch.zeros(batch_size, self.hidden_size)
         else:
-            # for now we ignore the fact that in PyTorch you can stack multiple RNNs
-            # so we take only the first elements of the init_states tuple init_states[0][0], init_states[1][0]
             h_t, c_t = init_states
             h_t = h_t[0]
             c_t = c_t[0]
 
         for t in range(seq_length):
-            # get features from the t-th element in seq, for all entries in the batch
             x_t = x[:, t, :]
-
-            # Concatenate input and hidden state
             v_t = torch.cat((h_t, x_t), dim=1)
-
-            # match qubit dimension
             y_t = self.clayer_in(v_t)
 
-            f_t = torch.sigmoid(self.clayer_out(self.VQC['forget'](y_t)))  # forget block
-            i_t = torch.sigmoid(self.clayer_out(self.VQC['input'](y_t)))  # input block
-            g_t = torch.tanh(self.clayer_out(self.VQC['update'](y_t)))  # update block
-            o_t = torch.sigmoid(self.clayer_out(self.VQC['output'](y_t)))  # output block
+            f_t = torch.sigmoid(self.clayer_out(self.VQC['forget'](y_t)))
+            i_t = torch.sigmoid(self.clayer_out(self.VQC['input'](y_t)))
+            g_t = torch.tanh(self.clayer_out(self.VQC['update'](y_t)))
+            o_t = torch.sigmoid(self.clayer_out(self.VQC['output'](y_t)))
 
             c_t = (f_t * c_t) + (i_t * g_t)
             h_t = o_t * torch.tanh(c_t)
 
             hidden_seq.append(h_t.unsqueeze(0))
+            
         hidden_seq = torch.cat(hidden_seq, dim=0)
         hidden_seq = hidden_seq.transpose(0, 1).contiguous()
         return hidden_seq, (h_t, c_t)
 
 
-
-
 class QShallowRegressionLSTM(nn.Module):
-    def __init__(self, num_sensors, hidden_units, n_qubits=4, n_qlayers=1, type='QLSTM'):
+    """
+    Shallow Regression model using Quantum LSTM.
+    
+    Simple architecture: QLSTM -> Linear layer for regression tasks.
+    """
+    
+    def __init__(self, num_sensors, hidden_units, n_qubits=4, n_qlayers=1):
         super().__init__()
-        self.num_sensors = num_sensors  # this is the number of features
+        self.num_sensors = num_sensors
         self.hidden_units = hidden_units
         self.num_layers = 1
-
 
         self.lstm = QLSTM(
             input_size=num_sensors,
@@ -190,16 +204,23 @@ class QShallowRegressionLSTM(nn.Module):
             n_qubits=n_qubits,
             n_qlayers=n_qlayers
         )
-
         self.linear = nn.Linear(in_features=self.hidden_units, out_features=1)
 
     def forward(self, x):
+        """
+        Forward pass.
+        
+        Args:
+            x: Input tensor of shape (batch, seq_len, features)
+            
+        Returns:
+            Predictions of shape (batch,)
+        """
         batch_size = x.shape[0]
         h0 = torch.zeros(self.num_layers, batch_size, self.hidden_units).requires_grad_()
         c0 = torch.zeros(self.num_layers, batch_size, self.hidden_units).requires_grad_()
 
         _, (hn, _) = self.lstm(x, (h0, c0))
-        out = self.linear(hn).flatten()  # First dim of Hn is num_layers, which is set to 1 above.
-
+        out = self.linear(hn).flatten()
         return out
-    
+

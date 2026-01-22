@@ -1,3 +1,10 @@
+"""
+Experiment Runner for Quantum and Classical LSTM Models.
+
+This script runs Leave-One-Group-Out cross-validation experiments
+comparing classical and quantum LSTM variants on the Parkinsons dataset.
+"""
+
 import os
 import csv
 import time
@@ -5,6 +12,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
 from hybridArchitecture import HybridQuantumAttentionModel
 from QLSTM import QShallowRegressionLSTM
 from QLSTMTensorRing import QShallowRegressionLSTMTensorRing
@@ -12,9 +20,8 @@ from classicArchitecture import ShallowRegressionLSTM, HybridClassicAttentionMod
 from DataUtils import get_parkinsons_logo_folds
 
 
-
 EXPERIMENTS = {
-    # === MODELLI CLASSICI ===
+    # Classic models
     "experiment_classic_1": {
         "name": "Classic LSTM",
         "model_type": "Classic",
@@ -29,7 +36,7 @@ EXPERIMENTS = {
         "useAttention": True,
         "use_modified_ring": False,
     },
-    # === QLSTM STANDARD ===
+    # Standard QLSTM
     "experiment_1": {
         "name": "QLSTM standard",
         "model_type": "QLSTM",
@@ -44,7 +51,7 @@ EXPERIMENTS = {
         "useAttention": True,
         "use_modified_ring": False,
     },
-    # === TENSOR RING STANDARD (use_modified_ring=False) ===
+    # Tensor Ring Standard (use_modified_ring=False)
     "experiment_3": {
         "name": "QLSTM Tensor Ring 1 layer",
         "model_type": "TensorRing",
@@ -73,7 +80,7 @@ EXPERIMENTS = {
         "useAttention": True,
         "use_modified_ring": False,
     },
-    # === TENSOR RING MODIFIED (use_modified_ring=True) ===
+    # Tensor Ring Modified (use_modified_ring=True)
     "experiment_7": {
         "name": "QLSTM Tensor Ring Modified 1 layer",
         "model_type": "TensorRing",
@@ -107,42 +114,54 @@ EXPERIMENTS = {
 
 def train_model(model, X_train, y_train, epochs=20, lr=0.01, name="Model"):
     """
-    Funzione generica per addestrare un modello PyTorch
+    Train a PyTorch model using MSE loss and AdamW optimizer.
+    
+    Args:
+        model: PyTorch model to train
+        X_train: Training features (batch, seq, features)
+        y_train: Training targets
+        epochs: Number of training epochs
+        lr: Learning rate
+        name: Model name for logging
+        
+    Returns:
+        Tuple of (loss_history, trained_model)
     """
     criterion = nn.MSELoss()
     optimizer = optim.AdamW(model.parameters(), lr=lr)
-    
     losses = []
     
-    print(f"\n--- Inizio Training: {name} ---")
+    print(f"\n--- Training Start: {name} ---")
     start_time = time.time()
     
     model.train()
     for epoch in range(epochs):
         optimizer.zero_grad()
-        
-        # Forward pass
-        # X_train shape: (Batch, Seq, Features)
         outputs = model(X_train)
-        
-        # Loss calculation
         loss = criterion(outputs, y_train)
-        
-        # Backward pass
         loss.backward()
         optimizer.step()
-        
         losses.append(loss.item())
         
         if (epoch + 1) % 5 == 0:
             print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.6f}")
             
     elapsed = time.time() - start_time
-    print(f"Training completato in {elapsed:.2f} secondi.")
+    print(f"Training completed in {elapsed:.2f} seconds.")
     return losses, model
 
 
 def evaluate_regression(y_true, y_pred):
+    """
+    Compute regression metrics.
+    
+    Args:
+        y_true: Ground truth values
+        y_pred: Predicted values
+        
+    Returns:
+        Dictionary with MSE, RMSE, MAE, R2, and MAPE
+    """
     y_true_np = y_true.detach().cpu().numpy()
     y_pred_np = y_pred.detach().cpu().numpy()
 
@@ -162,26 +181,33 @@ def evaluate_regression(y_true, y_pred):
 
 
 def time_series_split(X, y, test_ratio=0.2):
+    """Split time series data maintaining temporal order."""
     split_idx = int(len(X) * (1 - test_ratio))
     X_train, X_test = X[:split_idx], X[split_idx:]
     y_train, y_test = y[:split_idx], y[split_idx:]
     return X_train, X_test, y_train, y_test
 
 
-def build_model(
-    config,
-    total_features,
-    hidden_dim,
-    n_qubits,
-    default_n_qlayers,
-    backend,
-):
+def build_model(config, total_features, hidden_dim, n_qubits, default_n_qlayers, backend):
+    """
+    Build model based on experiment configuration.
+    
+    Args:
+        config: Experiment configuration dictionary
+        total_features: Number of input features
+        hidden_dim: Hidden layer dimension
+        n_qubits: Number of qubits for quantum models
+        default_n_qlayers: Default number of quantum layers
+        backend: Quantum backend name
+        
+    Returns:
+        Instantiated model
+    """
     model_type = config["model_type"]
     use_attention = config["useAttention"]
     num_layer_tensor_ring = config["num_layer_tensor_ring"]
     use_modified_ring = config.get("use_modified_ring", False)
 
-    # === MODELLI CLASSICI ===
     if model_type == "Classic":
         if use_attention:
             return HybridClassicAttentionModel(
@@ -196,7 +222,6 @@ def build_model(
             num_layers=1,
         )
 
-    # === MODELLI QUANTISTICI CON ATTENTION ===
     if use_attention:
         n_qlayers = default_n_qlayers
         if model_type == "TensorRing":
@@ -212,7 +237,6 @@ def build_model(
             use_modified_ring=use_modified_ring,
         )
 
-    # === MODELLI QUANTISTICI SENZA ATTENTION ===
     if model_type == "TensorRing":
         return QShallowRegressionLSTMTensorRing(
             num_sensors=total_features,
@@ -229,15 +253,16 @@ def build_model(
         n_qlayers=default_n_qlayers,
     )
 
-# --- CONFIGURAZIONE & CARICAMENTO DATI ---
 
-print("Inizializzazione esperimenti con Leave-One-Group-Out Cross-Validation...")
+# === MAIN EXECUTION ===
 
-# Parametri Dataset
+print("Initializing experiments with Leave-One-Group-Out Cross-Validation...")
+
+# Dataset parameters
 window_size = 10
 step = 1
 
-# Parametri Modello
+# Model parameters
 hidden_dim = 4
 n_qubits = 4
 n_qlayers = 1
@@ -246,9 +271,7 @@ learning_rate = 0.001
 
 results = []
 
-# --- LEAVE ONE GROUP OUT CROSS-VALIDATION ---
-# DataUtils.py gestisce tutto: caricamento, windowing, normalizzazione per fold
-print(f"\n=== Inizio Leave-One-Group-Out Cross-Validation ===")
+print(f"\n=== Starting Leave-One-Group-Out Cross-Validation ===")
 
 for fold_data in get_parkinsons_logo_folds(window_size=window_size, step=step):
     fold_idx = fold_data["fold_idx"]
@@ -257,24 +280,21 @@ for fold_data in get_parkinsons_logo_folds(window_size=window_size, step=step):
     n_folds = fold_data["n_folds"]
     
     print(f"\n{'='*60}")
-    print(f"FOLD {fold_idx + 1}/{n_folds} - Test su paziente {test_patient}")
-    print(f"Train: {fold_data['n_train']} campioni, Test: {fold_data['n_test']} campioni")
+    print(f"FOLD {fold_idx + 1}/{n_folds} - Testing on patient {test_patient}")
+    print(f"Train: {fold_data['n_train']} samples, Test: {fold_data['n_test']} samples")
     print(f"{'='*60}")
     
-    # Dati già normalizzati e pronti all'uso
     X_train = torch.tensor(fold_data["X_train"], dtype=torch.float32)
     X_test = torch.tensor(fold_data["X_test"], dtype=torch.float32)
     y_train = torch.tensor(fold_data["y_train"], dtype=torch.float32).unsqueeze(1)
     y_test = torch.tensor(fold_data["y_test"], dtype=torch.float32).unsqueeze(1)
     
-    # Determina il numero di feature dalla prima iterazione
     if fold_idx == 0:
         total_features = X_train.shape[2]
-        print(f"Feature utilizzate ({total_features}): {feature_names}")
+        print(f"Features used ({total_features}): {feature_names}")
     
-    # Eseguo ogni esperimento su questo fold
     for exp_id, config in EXPERIMENTS.items():
-        print(f"\n--- Esperimento: {config['name']} ---")
+        print(f"\n--- Experiment: {config['name']} ---")
         
         model = build_model(
             config=config,
@@ -311,10 +331,10 @@ for fold_data in get_parkinsons_logo_folds(window_size=window_size, step=step):
             **metrics,
         })
         
-        print(f"Metriche - MSE: {metrics['mse']:.4f}, RMSE: {metrics['rmse']:.4f}, "
+        print(f"Metrics - MSE: {metrics['mse']:.4f}, RMSE: {metrics['rmse']:.4f}, "
               f"MAE: {metrics['mae']:.4f}, R²: {metrics['r2']:.4f}")
 
-# --- 3. SALVATAGGIO RISULTATI ---
+# Save results
 output_path = os.path.join(os.path.dirname(__file__), "experiment_results.csv")
 fieldnames = [
     "fold",
@@ -337,6 +357,6 @@ with open(output_path, mode="w", newline="", encoding="utf-8") as csv_file:
     writer.writerows(results)
 
 print(f"\n{'='*60}")
-print(f"Risultati salvati in: {output_path}")
-print(f"Totale esperimenti eseguiti: {len(results)}")
+print(f"Results saved to: {output_path}")
+print(f"Total experiments executed: {len(results)}")
 print(f"{'='*60}")

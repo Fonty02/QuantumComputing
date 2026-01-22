@@ -1,42 +1,44 @@
-from ucimlrepo import fetch_ucirepo
+"""
+Data Utilities for Parkinsons Telemonitoring Dataset.
 
+This module handles data loading, preprocessing, windowing, and
+Leave-One-Group-Out cross-validation for the UCI Parkinsons dataset.
+"""
+
+from ucimlrepo import fetch_ucirepo
 import numpy as np
 from sklearn.model_selection import LeaveOneGroupOut
 from sklearn.preprocessing import StandardScaler
 
 
-# fetch dataset
 def get_parkinsons_dataset(window_size=10, step=1, normalize="per_fold"):
     """
-    Carica il Parkinsons Telemonitoring dataset (UCI #189), costruisce
-    finestre temporali per paziente e normalizza le feature.
-
-    - Target: motor_UPDRS
-    - Feature rimosse: ID (subject#), age, test_time, sex
-    - total_UPDRS escluso dai target
-
-    Ritorna:
-        X_windows: array (n_samples, window_size, n_features)
-        y_windows: array (n_samples,)
-        groups: array (n_samples,) con l'ID del paziente per Leave-One-Group-Out
-        logo: splitter sklearn LeaveOneGroupOut
-        feature_names: lista delle feature usate
-        scaler: StandardScaler (solo se normalize="global")
+    Load and preprocess the Parkinsons Telemonitoring dataset (UCI #189).
+    
+    Creates temporal windows per patient for time series forecasting.
+    Target variable: motor_UPDRS
+    Excluded features: subject#, age, test_time, sex, total_UPDRS
+    
+    Args:
+        window_size: Number of time steps in each window
+        step: Stride between consecutive windows
+        normalize: Normalization strategy ('per_fold', 'global', or False)
+        
+    Returns:
+        Tuple of (X_windows, y_windows, groups, logo_splitter, feature_names, scaler)
     """
     if window_size <= 0:
-        raise ValueError("window_size deve essere > 0")
+        raise ValueError("window_size must be > 0")
     if step <= 0:
-        raise ValueError("step deve essere > 0")
+        raise ValueError("step must be > 0")
     if normalize not in {"per_fold", "global", False, None}:
-        raise ValueError("normalize deve essere 'per_fold', 'global' o False")
+        raise ValueError("normalize must be 'per_fold', 'global', or False")
 
     parkinsons_telemonitoring = fetch_ucirepo(id=189)
 
-    # data (as pandas dataframes)
     X_df = parkinsons_telemonitoring.data.features.copy()
     y_df = parkinsons_telemonitoring.data.targets
 
-    # In alcuni casi i target non sono separati: recuperali dalle feature
     if y_df is None or len(getattr(y_df, "columns", [])) == 0:
         y_df = None
     else:
@@ -48,7 +50,7 @@ def get_parkinsons_dataset(window_size=10, step=1, normalize="per_fold"):
             y_df = X_df[target_cols].copy()
             X_df = X_df.drop(columns=target_cols)
         else:
-            raise ValueError("Colonna 'motor_UPDRS' non trovata nei dati.")
+            raise ValueError("Column 'motor_UPDRS' not found in data.")
 
     if "subject#" not in X_df.columns:
         ids_df = getattr(parkinsons_telemonitoring.data, "ids", None)
@@ -58,22 +60,18 @@ def get_parkinsons_dataset(window_size=10, step=1, normalize="per_fold"):
         elif original_df is not None and "subject#" in original_df.columns:
             X_df = X_df.join(original_df[["subject#"]])
         else:
-            raise ValueError("Colonna 'subject#' non trovata nei dati (feature/ids/original).")
+            raise ValueError("Column 'subject#' not found in data.")
 
     if "test_time" not in X_df.columns:
-        raise ValueError("Colonna 'test_time' non trovata nelle feature.")
+        raise ValueError("Column 'test_time' not found in features.")
 
-    # Costruzione tabella con target
     df = X_df.join(y_df[["motor_UPDRS"]])
 
-    # Feature utili (rimozione colonne non utili)
     drop_features = {"subject#", "age", "test_time", "sex", "total_UPDRS"}
     feature_names = [c for c in X_df.columns if c not in drop_features]
 
-    # drop righe con NaN nelle colonne usate
     df = df.dropna(subset=feature_names + ["motor_UPDRS", "subject#", "test_time"])
 
-    # Windowing per paziente
     X_windows = []
     y_windows = []
     groups = []
@@ -90,7 +88,6 @@ def get_parkinsons_dataset(window_size=10, step=1, normalize="per_fold"):
         for start in range(0, n_rows - window_size + 1, step):
             end = start + window_size
             X_windows.append(features[start:end])
-            # target = ultimo valore della finestra
             y_windows.append(targets[end - 1])
             groups.append(subject_id)
 
@@ -113,8 +110,17 @@ def get_parkinsons_dataset(window_size=10, step=1, normalize="per_fold"):
 
 def scale_fold(X_windows, train_idx, test_idx):
     """
-    Normalizza senza leakage: fit solo sul train di un fold LOGO.
-    Ritorna X_train, X_test, scaler.
+    Normalize a single fold without data leakage.
+    
+    Fits scaler only on training data and transforms both train and test.
+    
+    Args:
+        X_windows: Full dataset of windows
+        train_idx: Indices for training set
+        test_idx: Indices for test set
+        
+    Returns:
+        Tuple of (X_train, X_test, scaler)
     """
     scaler = StandardScaler()
     X_train = X_windows[train_idx]
@@ -137,38 +143,36 @@ def scale_fold(X_windows, train_idx, test_idx):
 
 def get_parkinsons_logo_folds(window_size=10, step=1):
     """
-    Carica il dataset Parkinsons e restituisce un generatore di fold 
-    per Leave-One-Group-Out cross-validation.
+    Generator for Leave-One-Group-Out cross-validation folds.
     
-    Ogni fold è già normalizzato senza data leakage e pronto all'uso.
+    Each fold is normalized without data leakage and ready to use.
     
+    Args:
+        window_size: Number of time steps in each window
+        step: Stride between consecutive windows
+        
     Yields:
-        Per ogni fold:
-        - fold_idx: int, indice del fold (0-based)
-        - test_patient: int, ID del paziente usato per il test
-        - X_train: array (n_train, window_size, n_features)
-        - X_test: array (n_test, window_size, n_features)
-        - y_train: array (n_train,)
-        - y_test: array (n_test,)
-        - feature_names: lista delle feature usate
-        - n_train: numero di campioni nel training set
-        - n_test: numero di campioni nel test set
+        Dictionary containing:
+            - fold_idx: Fold index (0-based)
+            - test_patient: Patient ID used for testing
+            - X_train, X_test: Normalized feature arrays
+            - y_train, y_test: Target arrays
+            - feature_names: List of feature names
+            - n_train, n_test: Sample counts
+            - n_folds: Total number of folds
     """
-    # Carica il dataset completo senza normalizzazione
     X_all, y_all, groups, logo, feature_names, _ = get_parkinsons_dataset(
         window_size=window_size,
         step=step,
-        normalize="per_fold"  # placeholder, la normalizzazione sarà per fold
+        normalize="per_fold"
     )
     
     n_folds = logo.get_n_splits(X_all, y_all, groups)
     
-    # Itera su ogni fold LOGO
     for fold_idx, (train_idx, test_idx) in enumerate(logo.split(X_all, y_all, groups)):
         test_patient = int(groups[test_idx[0]])
         
-        # Normalizza il fold senza data leakage
-        X_train, X_test, scaler = scale_fold(X_all, train_idx, test_idx)
+        X_train, X_test, _ = scale_fold(X_all, train_idx, test_idx)
         y_train = y_all[train_idx]
         y_test = y_all[test_idx]
         
@@ -186,4 +190,3 @@ def get_parkinsons_logo_folds(window_size=10, step=1):
         }
 
 
-    

@@ -1,3 +1,12 @@
+"""
+Quantum Ansatz Circuits using Qiskit.
+
+This module provides various tensor network-inspired quantum circuit ansatzes:
+- MPS: Matrix Product State
+- Tensor Ring: Full entanglement ring topology
+- TTN: Tree Tensor Network
+"""
+
 from qiskit import QuantumCircuit
 from qiskit.circuit.library import RealAmplitudes
 from qiskit_machine_learning.optimizers import COBYLA
@@ -5,98 +14,92 @@ from qiskit_machine_learning.algorithms.classifiers import VQC
 from qiskit.primitives import Sampler
 
 
-options = {'seed': 12345, 'shots': 4096}
+SAMPLER_OPTIONS = {'seed': 12345, 'shots': 4096}
+
 
 def MPS(num_qubits, **kwargs):
     """
-    Constructs a Matrix Product State (MPS) quantum circuit.
+    Construct a Matrix Product State (MPS) quantum circuit.
+    
+    MPS applies RealAmplitudes blocks to adjacent qubit pairs sequentially.
 
     Args:
-        num_qubits (int): The number of qubits in the circuit.
-        **kwargs: Additional keyword arguments to be passed to the
-        RealAmplitudes.
-
+        num_qubits: Number of qubits in the circuit
+        **kwargs: Additional arguments for RealAmplitudes
+        
     Returns:
-        QuantumCircuit: The constructed MPS quantum circuit.
-
+        QuantumCircuit with MPS structure
     """
     qc = QuantumCircuit(num_qubits)
     qubits = range(num_qubits)
 
-    # Iterate over adjacent qubit pairs
     for i, j in zip(qubits[:-1], qubits[1:]):
-        qc.compose(RealAmplitudes(num_qubits=2,
-                                  parameter_prefix=f'θ_{i},{j}',
-                                  **kwargs), [i, j],
-                   inplace=True)
-        qc.barrier(
-        )  # Add a barrier after each block for clarity and separation
+        qc.compose(
+            RealAmplitudes(num_qubits=2, parameter_prefix=f'θ_{i},{j}', **kwargs),
+            [i, j],
+            inplace=True
+        )
+        qc.barrier()
 
     return qc
+
 
 def tensor_ring(num_qubits, **kwargs):
     """
-    Constructs a Full Entanglement Tensor Ring quantum circuit.
+    Construct a Full Entanglement Tensor Ring quantum circuit.
+    
+    Similar to MPS but with an additional block connecting last and first qubits.
 
     Args:
-        num_qubits (int): The number of qubits in the circuit.
-        **kwargs: Additional keyword arguments to be passed to the
-        RealAmplitudes.
-
+        num_qubits: Number of qubits in the circuit
+        **kwargs: Additional arguments for RealAmplitudes
+        
     Returns:
-        QuantumCircuit: The constructed MPS quantum circuit.
-
+        QuantumCircuit with Tensor Ring structure
     """
     qc = QuantumCircuit(num_qubits)
     qubits = range(num_qubits)
 
-    # Iterate over adjacent qubit pairs
     for i, j in zip(qubits[:-1], qubits[1:]):
         qc.compose(
-            RealAmplitudes(num_qubits=2,
-                                  parameter_prefix=f'θ_{i},{j}',
-                                  **kwargs), [i, j],
-                   inplace=True)
-        qc.barrier(
-        )  # Add a barrier after each block for clarity and separation
+            RealAmplitudes(num_qubits=2, parameter_prefix=f'θ_{i},{j}', **kwargs),
+            [i, j],
+            inplace=True
+        )
+        qc.barrier()
 
-    qc.compose(RealAmplitudes(num_qubits=2,
-                              parameter_prefix=f'θ_{num_qubits-1},{0}',
-                              **kwargs), [num_qubits-1, 0],
-               inplace=True)
-    qc.barrier(
+    qc.compose(
+        RealAmplitudes(num_qubits=2, parameter_prefix=f'θ_{num_qubits-1},{0}', **kwargs),
+        [num_qubits-1, 0],
+        inplace=True
     )
+    qc.barrier()
 
     return qc
 
+
 def _generate_tree_tuples(n):
     """
-    Generate a list of tuples representing the tree structure
-    of consecutive numbers up to n.
-
+    Generate qubit pair indices for Tree Tensor Network structure.
+    
     Args:
-        n (int): The number up to which the tuples are generated.
-
+        n: Number of qubits (must be power of 2)
+        
     Returns:
-        list: A list of tuples representing the tree structure.
+        List of layers, each containing tuples of qubit pairs
     """
     tuples_list = []
     indices = []
 
-    # Generate initial tuples with consecutive numbers up to n
     for i in range(0, n, 2):
         tuples_list.append((i, i + 1))
 
     indices += [tuples_list]
 
-    # Perform iterations until we reach a single tuple
     while len(tuples_list) > 1:
         new_tuples = []
-
-        # Generate new tuples by combining adjacent larger numbers
         for i in range(0, len(tuples_list), 2):
             new_tuples.append((tuples_list[i][1], tuples_list[i + 1][1]))
-
         tuples_list = new_tuples
         indices += [tuples_list]
 
@@ -105,44 +108,50 @@ def _generate_tree_tuples(n):
 
 def TTN(num_qubits, **kwargs):
     """
-    Constructs a Tree Tensor Network (TTN) quantum circuit.
+    Construct a Tree Tensor Network (TTN) quantum circuit.
+    
+    TTN applies RealAmplitudes blocks in a binary tree structure.
 
     Args:
-        num_qubits (int): The number of qubits in the circuit.
-        **kwargs: Additional keyword arguments to be passed to the
-        RealAmplitudes.
-
+        num_qubits: Number of qubits (must be power of 2)
+        **kwargs: Additional arguments for RealAmplitudes
+        
     Returns:
-        QuantumCircuit: The constructed TTN quantum circuit.
-
+        QuantumCircuit with TTN structure
+        
     Raises:
-        AssertionError: If the number of qubits is not a power of 2
-        or zero.
+        AssertionError: If num_qubits is not a power of 2
     """
     qc = QuantumCircuit(num_qubits)
 
-    # Compute qubit indices
-    assert num_qubits & (
-            num_qubits -
-            1) == 0 and num_qubits != 0, "Number of qubits must be a power of 2"
+    assert num_qubits & (num_qubits - 1) == 0 and num_qubits != 0, \
+        "Number of qubits must be a power of 2"
 
     indices = _generate_tree_tuples(num_qubits)
 
-    # Iterate over each layer of TTN indices
     for layer_indices in indices:
         for i, j in layer_indices:
-            qc.compose(RealAmplitudes(num_qubits=2,
-                                      parameter_prefix=f'λ_{i},{j}',
-                                      **kwargs), [i, j],
-                       inplace=True)
-        qc.barrier(
-        )  # Add a barrier after each layer for clarity and separation
+            qc.compose(
+                RealAmplitudes(num_qubits=2, parameter_prefix=f'λ_{i},{j}', **kwargs),
+                [i, j],
+                inplace=True
+            )
+        qc.barrier()
 
     return qc
 
 
 def construct_tensor_ring_ansatz_circuit(num_qubits, measured_qubits=0):
-    # Function for the construction of the MPS+TTN ansatz
+    """
+    Construct a combined Tensor Ring + TTN ansatz circuit.
+    
+    Args:
+        num_qubits: Number of qubits
+        measured_qubits: Number of qubits to measure (0 for none)
+        
+    Returns:
+        QuantumCircuit with combined structure
+    """
     ansatz = QuantumCircuit(num_qubits, measured_qubits)
 
     ttn = TTN(num_qubits, reps=1).decompose()
@@ -152,38 +161,28 @@ def construct_tensor_ring_ansatz_circuit(num_qubits, measured_qubits=0):
     ansatz.compose(ttn, range(num_qubits), inplace=True)
 
     if measured_qubits > 0 and measured_qubits == 1:
-        # Modify this if needed another type of measurements
         ansatz.measure(num_qubits-1, 0)
 
     return ansatz
 
 
-def construct_qnn(feature_map, ansatz, callback_graph=None, maxiter=100, interpret=None, output_shape=2) -> VQC:
+def construct_qnn(feature_map, ansatz, callback_graph=None, maxiter=100, 
+                  interpret=None, output_shape=2) -> VQC:
     """
-    # These lines of code are used to execute circuits on the NVIDIA graphics.
-    device = "CUDA" if "GPU" in AerSimulator().available_devices() else "CPU"
-    sim = AerSimulator(method='statevector', device=device)
-    print('Run on :',AerSimulator().available_devices())
-    if device == "CUDA":
-        estimator = EstimatorV2(
-            options={
-                'backend_options': {
-                    'method': sim.options.method,
-                    'device': sim.options.device,
-                    'cuStateVec_enable': True,
-                    "seed_simulator": 42
-                }
-            }
-        )
-    else:
-        estimator = StatevectorEstimator(seed=42)
-
-    # Custom pass-manager
-    pm = generate_preset_pass_manager(optimization_level=3, backend=sim)
+    Construct a Variational Quantum Classifier.
+    
+    Args:
+        feature_map: Quantum circuit for feature encoding
+        ansatz: Variational ansatz circuit
+        callback_graph: Optional callback for optimization progress
+        maxiter: Maximum optimization iterations
+        interpret: Output interpretation function
+        output_shape: Number of output classes
+        
+    Returns:
+        Configured VQC classifier
     """
-    sampler = Sampler(options=options)
-
-    # uniform initialization of parameter
+    sampler = Sampler(options=SAMPLER_OPTIONS)
     initial_point = [0.5] * ansatz.num_parameters
 
     classifier = VQC(
@@ -196,7 +195,6 @@ def construct_qnn(feature_map, ansatz, callback_graph=None, maxiter=100, interpr
         loss='cross_entropy',
         output_shape=output_shape,
         initial_point=initial_point,
-        #pass_manager=pm
     )
 
     return classifier
