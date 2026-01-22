@@ -1,81 +1,189 @@
-import pandas as pd
+from ucimlrepo import fetch_ucirepo
+
 import numpy as np
-import torch
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import LeaveOneGroupOut
+from sklearn.preprocessing import StandardScaler
 
-def get_traffic_dataset(window_size=4, train_samples=-1):
+
+# fetch dataset
+def get_parkinsons_dataset(window_size=10, step=1, normalize="per_fold"):
     """
-    Download and process a traffic dataset (similar to Sacramento/Elizabeth City).
-    Target: Traffic volume.
-    Covariates: Temperature, Rain, Clouds, Hour of the day.
-    args:
-        window_size (int): Size of the sliding window for time series.
-        train_samples (int): Number of samples to use for training. 
-                             If -1, use the entire dataset.
+    Carica il Parkinsons Telemonitoring dataset (UCI #189), costruisce
+    finestre temporali per paziente e normalizza le feature.
+
+    - Target: motor_UPDRS
+    - Feature rimosse: ID (subject#), age, test_time, sex
+    - total_UPDRS escluso dai target
+
+    Ritorna:
+        X_windows: array (n_samples, window_size, n_features)
+        y_windows: array (n_samples,)
+        groups: array (n_samples,) con l'ID del paziente per Leave-One-Group-Out
+        logo: splitter sklearn LeaveOneGroupOut
+        feature_names: lista delle feature usate
+        scaler: StandardScaler (solo se normalize="global")
     """
-    
-    # 1. Dataset Download (Metro Interstate Traffic Volume - UCI)
-    url = "https://archive.ics.uci.edu/ml/machine-learning-databases/00492/Metro_Interstate_Traffic_Volume.csv.gz"
-    print(f"Downloading dataset from: {url}")
-    
-    try:
-        df = pd.read_csv(url, compression='gzip')
-    except Exception as e:
-        print("Error in direct download. Make sure you have internet connection.")
-        return None, None, None
+    if window_size <= 0:
+        raise ValueError("window_size deve essere > 0")
+    if step <= 0:
+        raise ValueError("step deve essere > 0")
+    if normalize not in {"per_fold", "global", False, None}:
+        raise ValueError("normalize deve essere 'per_fold', 'global' o False")
 
-    # 2. Preprocessing and Feature Engineering
-    # Convert the date to extract the hour (fundamental covariate for traffic)
-    df['date_time'] = pd.to_datetime(df['date_time'])
-    df['hour'] = df['date_time'].dt.hour
-    
-    # Sort by date
-    df = df.sort_values('date_time').reset_index(drop=True)
+    parkinsons_telemonitoring = fetch_ucirepo(id=189)
 
-    # Select the columns
-    # Target: 'traffic_volume' (Goes to QLSTM)
-    # Covariates: 'temp', 'rain_1h', 'clouds_all', 'hour' (Go to Attention)
-    
-    # Note: We remove holidays or weather_main strings for numerical simplicity
-    features_numeric = ['traffic_volume', 'temp', 'rain_1h', 'clouds_all', 'hour']
-    df_subset = df[features_numeric].copy()
-    
-    # Handling anomalous values (e.g., temperature 0 Kelvin)
-    df_subset = df_subset[df_subset['temp'] > 200] 
-    
-    # 3. Slicing for "Short Time Series" (Quantum Simulation)
-    # We take only a consecutive subset (e.g., the first 300 hours)
-    # This drastically reduces the training time of the quantum circuit.
-    if train_samples!= -1:
-        df_short = df_subset.iloc[:train_samples + window_size + 10]
-    
-    print(f"Dataset reduced to {len(df_short)} samples for quantum simulation.")
+    # data (as pandas dataframes)
+    X_df = parkinsons_telemonitoring.data.features.copy()
+    y_df = parkinsons_telemonitoring.data.targets
 
-    # 4. Normalization (MinMax between 0 and 1)
-    # Fundamental because QLSTM often uses limited activations (0,1) or (-1,1)
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    data_scaled = scaler.fit_transform(df_short)
+    # In alcuni casi i target non sono separati: recuperali dalle feature
+    if y_df is None or len(getattr(y_df, "columns", [])) == 0:
+        y_df = None
+    else:
+        y_df = y_df.copy()
+
+    if y_df is None or "motor_UPDRS" not in y_df.columns:
+        if "motor_UPDRS" in X_df.columns:
+            target_cols = [c for c in ["motor_UPDRS", "total_UPDRS"] if c in X_df.columns]
+            y_df = X_df[target_cols].copy()
+            X_df = X_df.drop(columns=target_cols)
+        else:
+            raise ValueError("Colonna 'motor_UPDRS' non trovata nei dati.")
+
+    if "subject#" not in X_df.columns:
+        ids_df = getattr(parkinsons_telemonitoring.data, "ids", None)
+        original_df = getattr(parkinsons_telemonitoring.data, "original", None)
+        if ids_df is not None and "subject#" in ids_df.columns:
+            X_df = X_df.join(ids_df[["subject#"]])
+        elif original_df is not None and "subject#" in original_df.columns:
+            X_df = X_df.join(original_df[["subject#"]])
+        else:
+            raise ValueError("Colonna 'subject#' non trovata nei dati (feature/ids/original).")
+
+    if "test_time" not in X_df.columns:
+        raise ValueError("Colonna 'test_time' non trovata nelle feature.")
+
+    # Costruzione tabella con target
+    df = X_df.join(y_df[["motor_UPDRS"]])
+
+    # Feature utili (rimozione colonne non utili)
+    drop_features = {"subject#", "age", "test_time", "sex", "total_UPDRS"}
+    feature_names = [c for c in X_df.columns if c not in drop_features]
+
+    # drop righe con NaN nelle colonne usate
+    df = df.dropna(subset=feature_names + ["motor_UPDRS", "subject#", "test_time"])
+
+    # Windowing per paziente
+    X_windows = []
+    y_windows = []
+    groups = []
+
+    for subject_id in df["subject#"].unique():
+        subject_df = df[df["subject#"] == subject_id].sort_values("test_time")
+        features = subject_df[feature_names].to_numpy(dtype=float)
+        targets = subject_df["motor_UPDRS"].to_numpy(dtype=float)
+
+        n_rows = len(subject_df)
+        if n_rows < window_size:
+            continue
+
+        for start in range(0, n_rows - window_size + 1, step):
+            end = start + window_size
+            X_windows.append(features[start:end])
+            # target = ultimo valore della finestra
+            y_windows.append(targets[end - 1])
+            groups.append(subject_id)
+
+    X_windows = np.asarray(X_windows, dtype=float)
+    y_windows = np.asarray(y_windows, dtype=float)
+    groups = np.asarray(groups)
+
+    scaler = None
+    if normalize == "global" and X_windows.size > 0:
+        scaler = StandardScaler()
+        X_shape = X_windows.shape
+        X_flat = X_windows.reshape(-1, X_shape[-1])
+        X_flat = scaler.fit_transform(X_flat)
+        X_windows = X_flat.reshape(X_shape)
+
+    logo = LeaveOneGroupOut()
+
+    return X_windows, y_windows, groups, logo, feature_names, scaler
+
+
+def scale_fold(X_windows, train_idx, test_idx):
+    """
+    Normalizza senza leakage: fit solo sul train di un fold LOGO.
+    Ritorna X_train, X_test, scaler.
+    """
+    scaler = StandardScaler()
+    X_train = X_windows[train_idx]
+    X_test = X_windows[test_idx]
+
+    X_shape_train = X_train.shape
+    X_shape_test = X_test.shape
+
+    X_train_flat = X_train.reshape(-1, X_shape_train[-1])
+    X_test_flat = X_test.reshape(-1, X_shape_test[-1])
+
+    X_train_flat = scaler.fit_transform(X_train_flat)
+    X_test_flat = scaler.transform(X_test_flat)
+
+    X_train = X_train_flat.reshape(X_shape_train)
+    X_test = X_test_flat.reshape(X_shape_test)
+
+    return X_train, X_test, scaler
+
+
+def get_parkinsons_logo_folds(window_size=10, step=1):
+    """
+    Carica il dataset Parkinsons e restituisce un generatore di fold 
+    per Leave-One-Group-Out cross-validation.
     
-    # data_scaled column 0 is 'traffic_volume' (Target)
-    # data_scaled columns 1,2,3,4 are the covariates
+    Ogni fold è già normalizzato senza data leakage e pronto all'uso.
     
-    # 5. Creating Windowing (Sliding Window)
-    X, y = [], []
-    for i in range(len(data_scaled) - window_size):
-        # Input: (Window_Size, All features)
-        row = data_scaled[i : i + window_size]
-        X.append(row)
+    Yields:
+        Per ogni fold:
+        - fold_idx: int, indice del fold (0-based)
+        - test_patient: int, ID del paziente usato per il test
+        - X_train: array (n_train, window_size, n_features)
+        - X_test: array (n_test, window_size, n_features)
+        - y_train: array (n_train,)
+        - y_test: array (n_test,)
+        - feature_names: lista delle feature usate
+        - n_train: numero di campioni nel training set
+        - n_test: numero di campioni nel test set
+    """
+    # Carica il dataset completo senza normalizzazione
+    X_all, y_all, groups, logo, feature_names, _ = get_parkinsons_dataset(
+        window_size=window_size,
+        step=step,
+        normalize="per_fold"  # placeholder, la normalizzazione sarà per fold
+    )
+    
+    n_folds = logo.get_n_splits(X_all, y_all, groups)
+    
+    # Itera su ogni fold LOGO
+    for fold_idx, (train_idx, test_idx) in enumerate(logo.split(X_all, y_all, groups)):
+        test_patient = int(groups[test_idx[0]])
         
-        # Output: Only the target (traffic_volume) at the next step
-        label = data_scaled[i + window_size, 0] 
-        y.append(label)
+        # Normalizza il fold senza data leakage
+        X_train, X_test, scaler = scale_fold(X_all, train_idx, test_idx)
+        y_train = y_all[train_idx]
+        y_test = y_all[test_idx]
         
-    X = np.array(X)
-    y = np.array(y)
-    
-    # Conversion to PyTorch Tensor
-    X_tensor = torch.tensor(X, dtype=torch.float32)
-    y_tensor = torch.tensor(y, dtype=torch.float32)
-    
-    return X_tensor, y_tensor, scaler
+        yield {
+            "fold_idx": fold_idx,
+            "test_patient": test_patient,
+            "X_train": X_train,
+            "X_test": X_test,
+            "y_train": y_train,
+            "y_test": y_test,
+            "feature_names": feature_names,
+            "n_train": len(train_idx),
+            "n_test": len(test_idx),
+            "n_folds": n_folds,
+        }
 
+
+    

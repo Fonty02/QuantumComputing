@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import pennylane as qml
 import numpy as np
-from tensorRing import tensor_ring
+from tensorRing import tensor_ring, tensor_ring_modified
 
 def create_window(df: list, window_size=3):
     """
@@ -37,7 +37,8 @@ class QLSTMTensorRing(nn.Module):
                  batch_first=True,
                  return_sequences=False,
                  return_state=False,
-                 backend="default.qubit"):
+                 backend="default.qubit",
+                 use_modified_ring=False):
         super(QLSTMTensorRing, self).__init__()
         # Set model parameters
         self.n_inputs = input_size
@@ -65,7 +66,10 @@ class QLSTMTensorRing(nn.Module):
         self.dev_output = qml.device(self.backend, wires=self.wires_output)
 
         # Get the tensor ring circuit and number of parameters
-        self.ring_circuit, self.num_ring_params = tensor_ring(self.n_qubits, reps=self.n_qlayers)
+        if use_modified_ring:
+            self.ring_circuit, self.num_ring_params = tensor_ring_modified(self.n_qubits, reps=self.n_qlayers)
+        else:
+            self.ring_circuit, self.num_ring_params = tensor_ring(self.n_qubits, reps=self.n_qlayers)
 
         # Define the Variational Quantum Circuit (VQC) function
         def VQC(features, weights, wires_type):
@@ -175,7 +179,7 @@ class QLSTMTensorRing(nn.Module):
 
 # Define a shallow regression model using QLSTMTensorRing
 class QShallowRegressionLSTMTensorRing(nn.Module):
-    def __init__(self, num_sensors, hidden_units, n_qubits=4, n_qlayers=1):
+    def __init__(self, num_sensors, hidden_units, n_qubits=4, n_qlayers=1, use_modified_ring=False):
         super().__init__()
         self.num_sensors = num_sensors
         self.hidden_units = hidden_units
@@ -187,7 +191,8 @@ class QShallowRegressionLSTMTensorRing(nn.Module):
             hidden_size=hidden_units,
             batch_first=True,
             n_qubits=n_qubits,
-            n_qlayers=n_qlayers
+            n_qlayers=n_qlayers,
+            use_modified_ring=use_modified_ring
         )
 
         # Linear layer for regression output

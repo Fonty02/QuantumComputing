@@ -50,7 +50,8 @@ class HybridQuantumAttentionModel(nn.Module):
                  n_qlayers=1, 
                  model_type='QLSTM',
                  backend='default.qubit',
-                 num_heads=1):
+                 num_heads=1,
+                 use_modified_ring=False):
         super(HybridQuantumAttentionModel, self).__init__()
         
         self.hidden_dim = hidden_dim
@@ -64,7 +65,8 @@ class HybridQuantumAttentionModel(nn.Module):
                 n_qubits=n_qubits,
                 n_qlayers=n_qlayers,
                 batch_first=True,
-                backend=backend
+                backend=backend,
+                use_modified_ring=use_modified_ring
             )
         else:
             self.q_lstm = QLSTM(

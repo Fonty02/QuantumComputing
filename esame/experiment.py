@@ -8,46 +8,99 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from hybridArchitecture import HybridQuantumAttentionModel
 from QLSTM import QShallowRegressionLSTM
 from QLSTMTensorRing import QShallowRegressionLSTMTensorRing
-from DataUtils import get_traffic_dataset
+from classicArchitecture import ShallowRegressionLSTM, HybridClassicAttentionModel
+from DataUtils import get_parkinsons_logo_folds
 
 
 
 EXPERIMENTS = {
+    # === MODELLI CLASSICI ===
+    "experiment_classic_1": {
+        "name": "Classic LSTM",
+        "model_type": "Classic",
+        "num_layer_tensor_ring": 0,
+        "useAttention": False,
+        "use_modified_ring": False,
+    },
+    "experiment_classic_2": {
+        "name": "Classic LSTM with Attention",
+        "model_type": "Classic",
+        "num_layer_tensor_ring": 0,
+        "useAttention": True,
+        "use_modified_ring": False,
+    },
+    # === QLSTM STANDARD ===
     "experiment_1": {
-        "name":"QLSTM standard",
-        "model_type":"QLSTM",
-        "num_layer_tensor_ring":0, #since we are not using tensor ring
-        "useAttention":False
+        "name": "QLSTM standard",
+        "model_type": "QLSTM",
+        "num_layer_tensor_ring": 0,
+        "useAttention": False,
+        "use_modified_ring": False,
     },
     "experiment_2": {
-        "name":"QLSTM standard with Attention",
-        "model_type":"QLSTM",
-        "num_layer_tensor_ring":0, #since we are not using tensor ring
-        "useAttention":True
+        "name": "QLSTM standard with Attention",
+        "model_type": "QLSTM",
+        "num_layer_tensor_ring": 0,
+        "useAttention": True,
+        "use_modified_ring": False,
     },
+    # === TENSOR RING STANDARD (use_modified_ring=False) ===
     "experiment_3": {
-        "name":"QLSTM Tensor Ring 1 layer",
-        "model_type":"TensorRing",
-        "num_layer_tensor_ring":1, #number of tensor ring layers
-        "useAttention":False
+        "name": "QLSTM Tensor Ring 1 layer",
+        "model_type": "TensorRing",
+        "num_layer_tensor_ring": 1,
+        "useAttention": False,
+        "use_modified_ring": False,
     },
     "experiment_4": {
-        "name":"QLSTM Tensor Ring 1 layer with Attention",
-        "model_type":"TensorRing",
-        "num_layer_tensor_ring":1, #number of tensor ring layers
-        "useAttention":True
+        "name": "QLSTM Tensor Ring 1 layer with Attention",
+        "model_type": "TensorRing",
+        "num_layer_tensor_ring": 1,
+        "useAttention": True,
+        "use_modified_ring": False,
     },
     "experiment_5": {
-        "name":"QLSTM Tensor Ring 2 layers",
-        "model_type":"TensorRing",
-        "num_layer_tensor_ring":2, #number of tensor ring layers
-        "useAttention":False
+        "name": "QLSTM Tensor Ring 2 layers",
+        "model_type": "TensorRing",
+        "num_layer_tensor_ring": 2,
+        "useAttention": False,
+        "use_modified_ring": False,
     },
     "experiment_6": {
-        "name":"QLSTM Tensor Ring 2 layers with Attention",
-        "model_type":"TensorRing",
-        "num_layer_tensor_ring":2, #number of tensor ring layers
-        "useAttention":True
+        "name": "QLSTM Tensor Ring 2 layers with Attention",
+        "model_type": "TensorRing",
+        "num_layer_tensor_ring": 2,
+        "useAttention": True,
+        "use_modified_ring": False,
+    },
+    # === TENSOR RING MODIFIED (use_modified_ring=True) ===
+    "experiment_7": {
+        "name": "QLSTM Tensor Ring Modified 1 layer",
+        "model_type": "TensorRing",
+        "num_layer_tensor_ring": 1,
+        "useAttention": False,
+        "use_modified_ring": True,
+    },
+    "experiment_8": {
+        "name": "QLSTM Tensor Ring Modified 1 layer with Attention",
+        "model_type": "TensorRing",
+        "num_layer_tensor_ring": 1,
+        "useAttention": True,
+        "use_modified_ring": True,
+    },
+    "experiment_9": {
+        "name": "QLSTM Tensor Ring Modified 2 layers",
+        "model_type": "TensorRing",
+        "num_layer_tensor_ring": 2,
+        "useAttention": False,
+        "use_modified_ring": True,
+    },
+    "experiment_10": {
+        "name": "QLSTM Tensor Ring Modified 2 layers with Attention",
+        "model_type": "TensorRing",
+        "num_layer_tensor_ring": 2,
+        "useAttention": True,
+        "use_modified_ring": True,
     },
 }
 
@@ -126,7 +179,24 @@ def build_model(
     model_type = config["model_type"]
     use_attention = config["useAttention"]
     num_layer_tensor_ring = config["num_layer_tensor_ring"]
+    use_modified_ring = config.get("use_modified_ring", False)
 
+    # === MODELLI CLASSICI ===
+    if model_type == "Classic":
+        if use_attention:
+            return HybridClassicAttentionModel(
+                total_input_features=total_features,
+                hidden_dim=hidden_dim,
+                num_layers=1,
+                num_heads=1,
+            )
+        return ShallowRegressionLSTM(
+            num_sensors=total_features,
+            hidden_units=hidden_dim,
+            num_layers=1,
+        )
+
+    # === MODELLI QUANTISTICI CON ATTENTION ===
     if use_attention:
         n_qlayers = default_n_qlayers
         if model_type == "TensorRing":
@@ -139,14 +209,17 @@ def build_model(
             n_qlayers=n_qlayers,
             model_type=model_type,
             backend=backend,
+            use_modified_ring=use_modified_ring,
         )
 
+    # === MODELLI QUANTISTICI SENZA ATTENTION ===
     if model_type == "TensorRing":
         return QShallowRegressionLSTMTensorRing(
             num_sensors=total_features,
             hidden_units=hidden_dim,
             n_qubits=n_qubits,
             n_qlayers=max(1, num_layer_tensor_ring),
+            use_modified_ring=use_modified_ring,
         )
 
     return QShallowRegressionLSTM(
@@ -158,64 +231,99 @@ def build_model(
 
 # --- CONFIGURAZIONE & CARICAMENTO DATI ---
 
-# 1. Carichiamo i dati (Usa la funzione get_traffic_dataset definita prima)
-# Usiamo un subset piccolo (200 campioni) per velocità, dato che è una simulazione quantistica
-print("Caricamento Dataset...")
-X_all, y_all, scaler = get_traffic_dataset(window_size=4, train_samples=300)
+print("Inizializzazione esperimenti con Leave-One-Group-Out Cross-Validation...")
+
+# Parametri Dataset
+window_size = 10
+step = 1
 
 # Parametri Modello
-total_features = X_all.shape[2]  # Target + Covariate
 hidden_dim = 4
 n_qubits = 4
 n_qlayers = 1
-epochs = 500
+epochs = 100
 learning_rate = 0.001
-
-# --- 2. SPLIT TRAIN/TEST ---
-X_train, X_test, y_train, y_test = time_series_split(X_all, y_all, test_ratio=0.3)
 
 results = []
 
-for exp_id, config in EXPERIMENTS.items():
-    model = build_model(
-        config=config,
-        total_features=total_features,
-        hidden_dim=hidden_dim,
-        n_qubits=n_qubits,
-        default_n_qlayers=n_qlayers,
-        backend="default.qubit",
-    )
+# --- LEAVE ONE GROUP OUT CROSS-VALIDATION ---
+# DataUtils.py gestisce tutto: caricamento, windowing, normalizzazione per fold
+print(f"\n=== Inizio Leave-One-Group-Out Cross-Validation ===")
 
-    losses, model = train_model(
-        model,
-        X_train,
-        y_train,
-        epochs=epochs,
-        lr=learning_rate,
-        name=config["name"],
-    )
-
-    model.eval()
-    with torch.no_grad():
-        preds = model(X_test)
-
-    metrics = evaluate_regression(y_test, preds)
-
-    results.append({
-        "name": config["name"],
-        "modelType": config["model_type"],
-        "num_layer_tensor_ring": config["num_layer_tensor_ring"],
-        "useAttention": config["useAttention"],
-        **metrics,
-    })
+for fold_data in get_parkinsons_logo_folds(window_size=window_size, step=step):
+    fold_idx = fold_data["fold_idx"]
+    test_patient = fold_data["test_patient"]
+    feature_names = fold_data["feature_names"]
+    n_folds = fold_data["n_folds"]
+    
+    print(f"\n{'='*60}")
+    print(f"FOLD {fold_idx + 1}/{n_folds} - Test su paziente {test_patient}")
+    print(f"Train: {fold_data['n_train']} campioni, Test: {fold_data['n_test']} campioni")
+    print(f"{'='*60}")
+    
+    # Dati già normalizzati e pronti all'uso
+    X_train = torch.tensor(fold_data["X_train"], dtype=torch.float32)
+    X_test = torch.tensor(fold_data["X_test"], dtype=torch.float32)
+    y_train = torch.tensor(fold_data["y_train"], dtype=torch.float32).unsqueeze(1)
+    y_test = torch.tensor(fold_data["y_test"], dtype=torch.float32).unsqueeze(1)
+    
+    # Determina il numero di feature dalla prima iterazione
+    if fold_idx == 0:
+        total_features = X_train.shape[2]
+        print(f"Feature utilizzate ({total_features}): {feature_names}")
+    
+    # Eseguo ogni esperimento su questo fold
+    for exp_id, config in EXPERIMENTS.items():
+        print(f"\n--- Esperimento: {config['name']} ---")
+        
+        model = build_model(
+            config=config,
+            total_features=total_features,
+            hidden_dim=hidden_dim,
+            n_qubits=n_qubits,
+            default_n_qlayers=n_qlayers,
+            backend="default.qubit",
+        )
+        
+        losses, model = train_model(
+            model,
+            X_train,
+            y_train,
+            epochs=epochs,
+            lr=learning_rate,
+            name=config["name"],
+        )
+        
+        model.eval()
+        with torch.no_grad():
+            preds = model(X_test)
+        
+        metrics = evaluate_regression(y_test, preds)
+        
+        results.append({
+            "fold": fold_idx + 1,
+            "test_patient": test_patient,
+            "name": config["name"],
+            "modelType": config["model_type"],
+            "num_layer_tensor_ring": config["num_layer_tensor_ring"],
+            "useAttention": config["useAttention"],
+            "use_modified_ring": config.get("use_modified_ring", False),
+            **metrics,
+        })
+        
+        print(f"Metriche - MSE: {metrics['mse']:.4f}, RMSE: {metrics['rmse']:.4f}, "
+              f"MAE: {metrics['mae']:.4f}, R²: {metrics['r2']:.4f}")
 
 # --- 3. SALVATAGGIO RISULTATI ---
 output_path = os.path.join(os.path.dirname(__file__), "experiment_results.csv")
 fieldnames = [
+    "fold",
+    "test_patient",
     "name",
     "modelType",
     "num_layer_tensor_ring",
     "useAttention",
+    "use_modified_ring",
     "mse",
     "rmse",
     "mae",
@@ -228,4 +336,7 @@ with open(output_path, mode="w", newline="", encoding="utf-8") as csv_file:
     writer.writeheader()
     writer.writerows(results)
 
+print(f"\n{'='*60}")
 print(f"Risultati salvati in: {output_path}")
+print(f"Totale esperimenti eseguiti: {len(results)}")
+print(f"{'='*60}")
