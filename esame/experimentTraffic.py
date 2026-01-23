@@ -1,9 +1,12 @@
 import os
 import csv
 import time
+import random
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import matplotlib.pyplot as plt
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from hybridArchitecture import HybridQuantumAttentionModel
 from QLSTM import QShallowRegressionLSTM
@@ -112,109 +115,112 @@ EXPERIMENTS = {
         "useAttention": True,
         "use_modified_ring": True,
         "window_size": 4,
-    },
-    
-    # Classic models - Window Size 72
-    "experiment_classic_1_ws72": {
-        "name": "Classic LSTM (WS=72)",
-        "model_type": "Classic",
-        "num_layer_tensor_ring": 0,
-        "useAttention": False,
-        "use_modified_ring": False,
-        "window_size": 72,
-    },
-    "experiment_classic_2_ws72": {
-        "name": "Classic LSTM with Attention (WS=72)",
-        "model_type": "Classic",
-        "num_layer_tensor_ring": 0,
-        "useAttention": True,
-        "use_modified_ring": False,
-        "window_size": 72,
-    },
-    # Standard QLSTM - Window Size 72
-    "experiment_1_ws72": {
-        "name": "QLSTM standard (WS=72)",
-        "model_type": "QLSTM",
-        "num_layer_tensor_ring": 0,
-        "useAttention": False,
-        "use_modified_ring": False,
-        "window_size": 72,
-    },
-    "experiment_2_ws72": {
-        "name": "QLSTM standard with Attention (WS=72)",
-        "model_type": "QLSTM",
-        "num_layer_tensor_ring": 0,
-        "useAttention": True,
-        "use_modified_ring": False,
-        "window_size": 72,
-    },
-    # Tensor Ring Standard - Window Size 72
-    "experiment_3_ws72": {
-        "name": "QLSTM Tensor Ring 1 layer (WS=72)",
-        "model_type": "TensorRing",
-        "num_layer_tensor_ring": 1,
-        "useAttention": False,
-        "use_modified_ring": False,
-        "window_size": 72,
-    },
-    "experiment_4_ws72": {
-        "name": "QLSTM Tensor Ring 1 layer with Attention (WS=72)",
-        "model_type": "TensorRing",
-        "num_layer_tensor_ring": 1,
-        "useAttention": True,
-        "use_modified_ring": False,
-        "window_size": 72,
-    },
-    "experiment_5_ws72": {
-        "name": "QLSTM Tensor Ring 2 layers (WS=72)",
-        "model_type": "TensorRing",
-        "num_layer_tensor_ring": 2,
-        "useAttention": False,
-        "use_modified_ring": False,
-        "window_size": 72,
-    },
-    "experiment_6_ws72": {
-        "name": "QLSTM Tensor Ring 2 layers with Attention (WS=72)",
-        "model_type": "TensorRing",
-        "num_layer_tensor_ring": 2,
-        "useAttention": True,
-        "use_modified_ring": False,
-        "window_size": 72,
-    },
-    # Tensor Ring Modified - Window Size 72
-    "experiment_7_ws72": {
-        "name": "QLSTM Tensor Ring Modified 1 layer (WS=72)",
-        "model_type": "TensorRing",
-        "num_layer_tensor_ring": 1,
-        "useAttention": False,
-        "use_modified_ring": True,
-        "window_size": 72,
-    },
-    "experiment_8_ws72": {
-        "name": "QLSTM Tensor Ring Modified 1 layer with Attention (WS=72)",
-        "model_type": "TensorRing",
-        "num_layer_tensor_ring": 1,
-        "useAttention": True,
-        "use_modified_ring": True,
-        "window_size": 72,
-    },
-    "experiment_9_ws72": {
-        "name": "QLSTM Tensor Ring Modified 2 layers (WS=72)",
-        "model_type": "TensorRing",
-        "num_layer_tensor_ring": 2,
-        "useAttention": False,
-        "use_modified_ring": True,
-        "window_size": 72,
-    },
-    "experiment_10_ws72": {
-        "name": "QLSTM Tensor Ring Modified 2 layers with Attention (WS=72)",
-        "model_type": "TensorRing",
-        "num_layer_tensor_ring": 2,
-        "useAttention": True,
-        "use_modified_ring": True,
-        "window_size": 72,
-    },
+    }
 }
+"""
+        ,
+        # Classic models - Window Size 72
+        "experiment_classic_1_ws72": {
+            "name": "Classic LSTM (WS=72)",
+            "model_type": "Classic",
+            "num_layer_tensor_ring": 0,
+            "useAttention": False,
+            "use_modified_ring": False,
+            "window_size": 72,
+        },
+        "experiment_classic_2_ws72": {
+            "name": "Classic LSTM with Attention (WS=72)",
+            "model_type": "Classic",
+            "num_layer_tensor_ring": 0,
+            "useAttention": True,
+            "use_modified_ring": False,
+            "window_size": 72,
+        },
+        # Standard QLSTM - Window Size 72
+        "experiment_1_ws72": {
+            "name": "QLSTM standard (WS=72)",
+            "model_type": "QLSTM",
+            "num_layer_tensor_ring": 0,
+            "useAttention": False,
+            "use_modified_ring": False,
+            "window_size": 72,
+        },
+        "experiment_2_ws72": {
+            "name": "QLSTM standard with Attention (WS=72)",
+            "model_type": "QLSTM",
+            "num_layer_tensor_ring": 0,
+            "useAttention": True,
+            "use_modified_ring": False,
+            "window_size": 72,
+        },
+        # Tensor Ring Standard - Window Size 72
+        "experiment_3_ws72": {
+            "name": "QLSTM Tensor Ring 1 layer (WS=72)",
+            "model_type": "TensorRing",
+            "num_layer_tensor_ring": 1,
+            "useAttention": False,
+            "use_modified_ring": False,
+            "window_size": 72,
+        },
+        "experiment_4_ws72": {
+            "name": "QLSTM Tensor Ring 1 layer with Attention (WS=72)",
+            "model_type": "TensorRing",
+            "num_layer_tensor_ring": 1,
+            "useAttention": True,
+            "use_modified_ring": False,
+            "window_size": 72,
+        },
+        "experiment_5_ws72": {
+            "name": "QLSTM Tensor Ring 2 layers (WS=72)",
+            "model_type": "TensorRing",
+            "num_layer_tensor_ring": 2,
+            "useAttention": False,
+            "use_modified_ring": False,
+            "window_size": 72,
+        },
+        "experiment_6_ws72": {
+            "name": "QLSTM Tensor Ring 2 layers with Attention (WS=72)",
+            "model_type": "TensorRing",
+            "num_layer_tensor_ring": 2,
+            "useAttention": True,
+            "use_modified_ring": False,
+            "window_size": 72,
+        },
+        # Tensor Ring Modified - Window Size 72
+        "experiment_7_ws72": {
+            "name": "QLSTM Tensor Ring Modified 1 layer (WS=72)",
+            "model_type": "TensorRing",
+            "num_layer_tensor_ring": 1,
+            "useAttention": False,
+            "use_modified_ring": True,
+            "window_size": 72,
+        },
+        "experiment_8_ws72": {
+            "name": "QLSTM Tensor Ring Modified 1 layer with Attention (WS=72)",
+            "model_type": "TensorRing",
+            "num_layer_tensor_ring": 1,
+            "useAttention": True,
+            "use_modified_ring": True,
+            "window_size": 72,
+        },
+        "experiment_9_ws72": {
+            "name": "QLSTM Tensor Ring Modified 2 layers (WS=72)",
+            "model_type": "TensorRing",
+            "num_layer_tensor_ring": 2,
+            "useAttention": False,
+            "use_modified_ring": True,
+            "window_size": 72,
+        },
+        "experiment_10_ws72": {
+            "name": "QLSTM Tensor Ring Modified 2 layers with Attention (WS=72)",
+            "model_type": "TensorRing",
+            "num_layer_tensor_ring": 2,
+            "useAttention": True,
+            "use_modified_ring": True,
+            "window_size": 72,
+        },
+    """
+
 
 
 def train_model(model, X_train, y_train, epochs=20, lr=0.01, name="Model", patience=50):
@@ -343,7 +349,27 @@ def build_model(
         n_qlayers=default_n_qlayers,
     )
 
+
+def set_seed(seed=42):
+    """
+    Set all random seeds for reproducibility
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    print(f"All seeds set to {seed} for reproducibility")
+
+
 # --- CONFIGURATION & DATA LOADING ---
+
+# Set seed for reproducibility
+SEED = 42
+set_seed(SEED)
 
 # Model Parameters
 hidden_dim = 4
@@ -355,7 +381,47 @@ patience = 5
 train_samples = 24102
 test_ratio = 0.3
 
-results = []
+# Create models directory if it doesn't exist
+models_dir = os.path.join(os.path.dirname(__file__), "models")
+os.makedirs(models_dir, exist_ok=True)
+
+# Create plot directory if it doesn't exist
+plot_dir = os.path.join(os.path.dirname(__file__), "plot")
+os.makedirs(plot_dir, exist_ok=True)
+
+# Prepare CSV file with header
+output_path = os.path.join(os.path.dirname(__file__), "experiment_results.csv")
+fieldnames = [
+    "name",
+    "modelType",
+    "num_layer_tensor_ring",
+    "useAttention",
+    "use_modified_ring",
+    "window_size",
+    "total_epochs",
+    "used_epochs",
+    "patience",
+    "learning_rate",
+    "hidden_dim",
+    "n_qubits",
+    "n_qlayers",
+    "test_ratio",
+    "total_features",
+    "mse",
+    "rmse",
+    "mae",
+    "r2",
+    "mape",
+]
+
+# Create CSV with header if it doesn't exist
+if not os.path.exists(output_path):
+    with open(output_path, mode="w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+    print(f"Created new results file: {output_path}")
+else:
+    print(f"Appending to existing results file: {output_path}")
 
 # Pre-load datasets for both window sizes
 datasets_cache = {}
@@ -389,6 +455,10 @@ for exp_id, config in EXPERIMENTS.items():
     y_test = data["y_test"]
     total_features = data["total_features"]
     
+    # Check if model already exists
+    model_filename = f"{exp_id}.pth"
+    model_path = os.path.join(models_dir, model_filename)
+    
     model = build_model(
         config=config,
         total_features=total_features,
@@ -397,24 +467,57 @@ for exp_id, config in EXPERIMENTS.items():
         default_n_qlayers=n_qlayers,
         backend="default.qubit",
     )
-
-    losses, model, used_epochs = train_model(
-        model,
-        X_train,
-        y_train,
-        epochs=epochs,
-        lr=learning_rate,
-        name=config["name"],
-        patience=patience,
-    )
+    
+    if os.path.exists(model_path):
+        print(f"Model already exists: {model_path}")
+        print("Loading existing model and skipping training...")
+        model.load_state_dict(torch.load(model_path))
+        used_epochs = 0  # No training performed
+    else:
+        print("Training new model...")
+        losses, model, used_epochs = train_model(
+            model,
+            X_train,
+            y_train,
+            epochs=epochs,
+            lr=learning_rate,
+            name=config["name"],
+            patience=patience,
+        )
+        
+        # Save the best model
+        torch.save(model.state_dict(), model_path)
+        print(f"Model saved: {model_path}")
 
     model.eval()
     with torch.no_grad():
         preds = model(X_test)
 
     metrics = evaluate_regression(y_test, preds)
+    
+    # Create prediction comparison plot
+    plt.figure(figsize=(12, 6))
+    y_test_np = y_test.detach().cpu().numpy().flatten()
+    preds_np = preds.detach().cpu().numpy().flatten()
+    
+    plt.plot(y_test_np, label='Ground Truth', linewidth=2, alpha=0.8)
+    plt.plot(preds_np, label='Predictions', linewidth=2, alpha=0.8)
+    plt.xlabel('Time Steps')
+    plt.ylabel('Traffic Volume')
+    plt.title(f'{config["name"]} - Prediction vs Ground Truth (Test Set)')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    # Save plot
+    plot_filename = f"{exp_id}_predictions.png"
+    plot_path = os.path.join(plot_dir, plot_filename)
+    plt.savefig(plot_path, dpi=150)
+    plt.close()
+    print(f"Plot saved: {plot_path}")
 
-    results.append({
+    # Prepare result row
+    result_row = {
         "name": config["name"],
         "modelType": config["model_type"],
         "num_layer_tensor_ring": config["num_layer_tensor_ring"],
@@ -431,39 +534,16 @@ for exp_id, config in EXPERIMENTS.items():
         "test_ratio": test_ratio,
         "total_features": total_features,
         **metrics,
-    })
-
-# --- 3. SAVE RESULTS ---
-output_path = os.path.join(os.path.dirname(__file__), "experiment_results.csv")
-fieldnames = [
-    "name",
-    "modelType",
-    "num_layer_tensor_ring",
-    "useAttention",
-    "use_modified_ring",
-    "window_size",
-    "total_epochs",
-    "used_epochs",
-    "patience",
-    "learning_rate",
-    "hidden_dim",
-    "n_qubits",
-    "n_qlayers",
-    "test_ratio",
-    "total_features",
-    "mse",
-    "rmse",
-    "mae",
-    "r2",
-    "mape",
-]
-
-with open(output_path, mode="w", newline="", encoding="utf-8") as csv_file:
-    writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-    writer.writeheader()
-    writer.writerows(results)
+    }
+    
+    # Append result to CSV immediately
+    with open(output_path, mode="a", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writerow(result_row)
+    
+    print(f"Result appended to: {output_path}")
 
 print(f"\n{'='*80}")
+print(f"All experiments completed!")
 print(f"Results saved to: {output_path}")
-print(f"Total experiments completed: {len(results)}")
 print(f"{'='*80}")
