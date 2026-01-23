@@ -220,4 +220,5 @@ class QShallowRegressionLSTMTensorRing(nn.Module):
 
         _, (hn, _) = self.lstm(x, (h0, c0))
         out = self.linear(hn).flatten()
+        out = torch.sigmoid(out)
         return out

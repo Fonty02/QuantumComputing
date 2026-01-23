@@ -8,39 +8,6 @@ import torch
 import torch.nn as nn
 
 
-class ClassicLSTM(nn.Module):
-    """Classic LSTM model for regression tasks."""
-    
-    def __init__(self, input_size, hidden_size, num_layers=1, batch_first=True):
-        super(ClassicLSTM, self).__init__()
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        
-        self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            batch_first=batch_first
-        )
-        self.linear = nn.Linear(hidden_size, 1)
-    
-    def forward(self, x):
-        """
-        Forward pass.
-        
-        Args:
-            x: Input tensor of shape (batch, seq_len, features)
-            
-        Returns:
-            Predictions of shape (batch,)
-        """
-        batch_size = x.shape[0]
-        h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=x.device)
-        c0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=x.device)
-        
-        _, (hn, _) = self.lstm(x, (h0, c0))
-        out = self.linear(hn[-1]).flatten()
-        return out
 
 
 class AttentionLayer(nn.Module):
@@ -127,6 +94,7 @@ class HybridClassicAttentionModel(nn.Module):
 
         context_vector, _ = self.attention(combined_features)
         prediction = self.regressor(context_vector)
+        prediction = torch.sigmoid(prediction)
         
         return prediction.flatten()
 
@@ -168,4 +136,5 @@ class ShallowRegressionLSTM(nn.Module):
 
         _, (hn, _) = self.lstm(x, (h0, c0))
         out = self.linear(hn[-1]).flatten()
+        out = torch.sigmoid(out)
         return out

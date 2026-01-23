@@ -112,5 +112,6 @@ class HybridQuantumAttentionModel(nn.Module):
 
         context_vector, _ = self.attention(combined_features)
         prediction = self.regressor(context_vector)
+        prediction = torch.sigmoid(prediction)
         
         return prediction.flatten()
