@@ -12,6 +12,7 @@ from hybridArchitecture import HybridQuantumAttentionModel
 from QLSTM import QShallowRegressionLSTM
 from QLSTMTensorRing import QShallowRegressionLSTMTensorRing
 from DataUtilsTraffic import get_traffic_dataset
+from expressivity import compute_expressivity_from_model
 
 
 
@@ -365,6 +366,46 @@ def set_seed(seed=42):
     print(f"All seeds set to {seed} for reproducibility")
 
 
+def compute_model_expressivity(model, config, n_samples=1000, seed=42):
+    """
+    Compute expressivity (KL-divergence) for a trained model.
+    
+    This function uses the actual circuit structure from the trained model,
+    ensuring the expressivity is calculated on the exact same circuit architecture.
+    
+    Following the methodology from the slides:
+    - Lower KL-divergence = higher expressivity = circuit covers more of Hilbert space
+    - Uses Haar distribution as the reference (ideal random distribution)
+    
+    Args:
+        model: Trained model (QShallowRegressionLSTM or QShallowRegressionLSTMTensorRing)
+        config: Experiment configuration dictionary
+        n_samples: Number of random parameter samples
+        seed: Random seed for reproducibility
+        
+    Returns:
+        float: KL-divergence value (lower = more expressive)
+    """
+    model_type = config["model_type"]
+    
+    # Classic models don't have quantum expressivity
+    if model_type == "Classic":
+        return None
+    
+    try:
+        # Use the model's actual circuit structure
+        kl_divergence, _, _ = compute_expressivity_from_model(
+            model=model,
+            gate_name='forget',  # Use forget gate as representative
+            n_samples=n_samples,
+            seed=seed
+        )
+        return kl_divergence
+    except Exception as e:
+        print(f"Warning: Could not compute expressivity: {e}")
+        return None
+
+
 # --- CONFIGURATION & DATA LOADING ---
 
 # Set seed for reproducibility
@@ -412,6 +453,7 @@ fieldnames = [
     "mae",
     "r2",
     "mape",
+    "expressivity_kl",
 ]
 
 # Create CSV with header if it doesn't exist
@@ -495,6 +537,19 @@ for exp_id, config in EXPERIMENTS.items():
 
     metrics = evaluate_regression(y_test, preds)
     
+    # Compute expressivity for quantum models
+    print("Computing expressivity (KL-divergence w.r.t. Haar distribution)...")
+    expressivity_kl = compute_model_expressivity(
+        model=model,
+        config=config,
+        n_samples=500,  # Reduced samples for speed, increase for more accuracy
+        seed=SEED
+    )
+    if expressivity_kl is not None:
+        print(f"Expressivity (KL-divergence): {expressivity_kl:.6f} (lower = more expressive)")
+    else:
+        print("Expressivity: N/A (Classic model)")
+    
     # Create prediction comparison plot
     plt.figure(figsize=(12, 6))
     y_test_np = y_test.detach().cpu().numpy().flatten()
@@ -534,6 +589,7 @@ for exp_id, config in EXPERIMENTS.items():
         "test_ratio": test_ratio,
         "total_features": total_features,
         **metrics,
+        "expressivity_kl": expressivity_kl,
     }
     
     # Append result to CSV immediately

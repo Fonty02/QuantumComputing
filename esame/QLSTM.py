@@ -183,6 +183,65 @@ class QLSTM(nn.Module):
         hidden_seq = hidden_seq.transpose(0, 1).contiguous()
         return hidden_seq, (h_t, c_t)
 
+    def get_expressivity_circuit(self, gate_name: str = 'forget'):
+        """
+        Get a probability-returning circuit for expressivity calculation.
+        
+        Creates a QNode that replicates the exact circuit structure used in training
+        but returns probabilities instead of expectation values.
+        
+        Args:
+            gate_name: Name of the gate ('forget', 'input', 'update', 'output')
+            
+        Returns:
+            Tuple of (qnode_function, wires, param_shape)
+        """
+        wires_dict = {
+            'forget': self.wires_forget,
+            'input': self.wires_input,
+            'update': self.wires_update,
+            'output': self.wires_output
+        }
+        wires = wires_dict[gate_name]
+        
+        # Create a fresh device for probability measurement
+        device = qml.device("default.qubit", wires=wires)
+        
+        n_qubits = self.n_qubits
+        n_qlayers = self.n_qlayers
+        
+        # Replicate the exact ansatz structure from the model
+        def ansatz(params, wires_type):
+            for i in range(1, 3):
+                for j in range(n_qubits):
+                    target = j + i if j + i < n_qubits else j + i - n_qubits
+                    qml.CNOT(wires=[wires_type[j], wires_type[target]])
+            for i in range(n_qubits):
+                qml.RX(params[0][i], wires=wires_type[i])
+                qml.RY(params[1][i], wires=wires_type[i])
+                qml.RZ(params[2][i], wires=wires_type[i])
+        
+        @qml.qnode(device, interface="numpy")
+        def prob_circuit(features, weights):
+            """Circuit that returns probabilities for expressivity calculation."""
+            # Feature encoding - exact same as VQC in __init__
+            ry_params = [np.arctan(features[i]) for i in range(n_qubits)]
+            rz_params = [np.arctan(features[i] ** 2) for i in range(n_qubits)]
+            
+            for i in range(n_qubits):
+                qml.Hadamard(wires=wires[i])
+                qml.RY(ry_params[i], wires=wires[i])
+                qml.RZ(rz_params[i], wires=wires[i])
+            
+            # Variational layers - exact same as ansatz
+            qml.layer(ansatz, n_qlayers, weights, wires_type=wires)
+            
+            return qml.probs(wires=wires)
+        
+        param_shape = (n_qlayers, 3, n_qubits)  # (n_qlayers, n_vrotations, n_qubits)
+        
+        return prob_circuit, wires, param_shape
+
 
 class QShallowRegressionLSTM(nn.Module):
     """

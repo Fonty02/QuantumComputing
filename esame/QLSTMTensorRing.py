@@ -180,6 +180,55 @@ class QLSTMTensorRing(nn.Module):
         hidden_seq = hidden_seq.transpose(0, 1).contiguous()
         return hidden_seq, (h_t, c_t)
 
+    def get_expressivity_circuit(self, gate_name: str = 'forget'):
+        """
+        Get a probability-returning circuit for expressivity calculation.
+        
+        Creates a QNode that replicates the exact Tensor Ring circuit structure
+        used in training but returns probabilities instead of expectation values.
+        
+        Args:
+            gate_name: Name of the gate ('forget', 'input', 'update', 'output')
+            
+        Returns:
+            Tuple of (qnode_function, wires, param_shape)
+        """
+        wires_dict = {
+            'forget': self.wires_forget,
+            'input': self.wires_input,
+            'update': self.wires_update,
+            'output': self.wires_output
+        }
+        wires = list(wires_dict[gate_name])
+        
+        # Create a fresh device for probability measurement
+        device = qml.device("default.qubit", wires=wires)
+        
+        n_qubits = self.n_qubits
+        ring_circuit = self.ring_circuit
+        num_ring_params = self.num_ring_params
+        
+        @qml.qnode(device, interface="numpy")
+        def prob_circuit(features, weights):
+            """Circuit that returns probabilities for expressivity calculation."""
+            # Feature encoding - exact same as VQC in __init__
+            ry_params = [np.arctan(features[i]) for i in range(n_qubits)]
+            rz_params = [np.arctan(features[i] ** 2) for i in range(n_qubits)]
+            
+            for i in range(n_qubits):
+                qml.Hadamard(wires=wires[i])
+                qml.RY(ry_params[i], wires=wires[i])
+                qml.RZ(rz_params[i], wires=wires[i])
+            
+            # Apply the tensor ring circuit - exact same as in training
+            ring_circuit(weights)
+            
+            return qml.probs(wires=wires)
+        
+        param_shape = (num_ring_params,)
+        
+        return prob_circuit, wires, param_shape
+
 
 class QShallowRegressionLSTMTensorRing(nn.Module):
     """
