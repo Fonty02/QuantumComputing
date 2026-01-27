@@ -117,7 +117,7 @@ def get_circuit_probabilities_pennylane(
     params: np.ndarray,
     n_qubits: int,
     wires: list,
-    device: qml.Device = None
+    device: qml.device = None
 ) -> np.ndarray:
     """
     Get output probabilities from a PennyLane circuit.

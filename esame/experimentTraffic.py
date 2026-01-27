@@ -373,12 +373,17 @@ def compute_model_expressivity(model, config, n_samples=1000, seed=42):
     This function uses the actual circuit structure from the trained model,
     ensuring the expressivity is calculated on the exact same circuit architecture.
     
+    For models with Attention, the expressivity is computed on the underlying
+    quantum LSTM layer (q_lstm), since Attention is a classical mechanism that
+    doesn't affect the quantum circuit's expressivity.
+    
     Following the methodology from the slides:
     - Lower KL-divergence = higher expressivity = circuit covers more of Hilbert space
     - Uses Haar distribution as the reference (ideal random distribution)
     
     Args:
-        model: Trained model (QShallowRegressionLSTM or QShallowRegressionLSTMTensorRing)
+        model: Trained model (QShallowRegressionLSTM, QShallowRegressionLSTMTensorRing,
+               or HybridQuantumAttentionModel)
         config: Experiment configuration dictionary
         n_samples: Number of random parameter samples
         seed: Random seed for reproducibility
@@ -387,15 +392,26 @@ def compute_model_expressivity(model, config, n_samples=1000, seed=42):
         float: KL-divergence value (lower = more expressive)
     """
     model_type = config["model_type"]
+    use_attention = config.get("useAttention", False)
     
     # Classic models don't have quantum expressivity
     if model_type == "Classic":
         return None
     
     try:
+        # For models with Attention, extract the underlying quantum LSTM
+        # The expressivity depends only on the quantum circuit, not on the
+        # classical Attention layer
+        if use_attention and hasattr(model, 'q_lstm'):
+            # HybridQuantumAttentionModel has the quantum layer in q_lstm
+            quantum_model = model.q_lstm
+        else:
+            # Direct quantum model (QShallowRegressionLSTM or QShallowRegressionLSTMTensorRing)
+            quantum_model = model
+        
         # Use the model's actual circuit structure
         kl_divergence, _, _ = compute_expressivity_from_model(
-            model=model,
+            model=quantum_model,
             gate_name='forget',  # Use forget gate as representative
             n_samples=n_samples,
             seed=seed
