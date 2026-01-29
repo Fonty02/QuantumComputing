@@ -23,7 +23,7 @@ EXPERIMENTS = {
         "model_type": "Classic",
         "num_layer_tensor_ring": 0,
         "useAttention": False,
-        "use_modified_ring": False,
+        "ring_variant": "standard",
         "window_size": 4,
     },
     "experiment_classic_2_ws4": {
@@ -31,7 +31,7 @@ EXPERIMENTS = {
         "model_type": "Classic",
         "num_layer_tensor_ring": 0,
         "useAttention": True,
-        "use_modified_ring": False,
+        "ring_variant": "standard",
         "window_size": 4,
     },
     # Standard QLSTM - Window Size 4
@@ -40,7 +40,7 @@ EXPERIMENTS = {
         "model_type": "QLSTM",
         "num_layer_tensor_ring": 0,
         "useAttention": False,
-        "use_modified_ring": False,
+        "ring_variant": "standard",
         "window_size": 4,
     },
     "experiment_2_ws4": {
@@ -48,7 +48,7 @@ EXPERIMENTS = {
         "model_type": "QLSTM",
         "num_layer_tensor_ring": 0,
         "useAttention": True,
-        "use_modified_ring": False,
+        "ring_variant": "standard",
         "window_size": 4,
     },
     # Tensor Ring Standard - Window Size 4
@@ -57,7 +57,7 @@ EXPERIMENTS = {
         "model_type": "TensorRing",
         "num_layer_tensor_ring": 1,
         "useAttention": False,
-        "use_modified_ring": False,
+        "ring_variant": "standard",
         "window_size": 4,
     },
     "experiment_4_ws4": {
@@ -65,7 +65,7 @@ EXPERIMENTS = {
         "model_type": "TensorRing",
         "num_layer_tensor_ring": 1,
         "useAttention": True,
-        "use_modified_ring": False,
+        "ring_variant": "standard",
         "window_size": 4,
     },
     "experiment_5_ws4": {
@@ -73,7 +73,7 @@ EXPERIMENTS = {
         "model_type": "TensorRing",
         "num_layer_tensor_ring": 2,
         "useAttention": False,
-        "use_modified_ring": False,
+        "ring_variant": "standard",
         "window_size": 4,
     },
     "experiment_6_ws4": {
@@ -81,7 +81,7 @@ EXPERIMENTS = {
         "model_type": "TensorRing",
         "num_layer_tensor_ring": 2,
         "useAttention": True,
-        "use_modified_ring": False,
+        "ring_variant": "standard",
         "window_size": 4,
     },
     # Tensor Ring Modified - Window Size 4
@@ -90,7 +90,7 @@ EXPERIMENTS = {
         "model_type": "TensorRing",
         "num_layer_tensor_ring": 1,
         "useAttention": False,
-        "use_modified_ring": True,
+        "ring_variant": "modified",
         "window_size": 4,
     },
     "experiment_8_ws4": {
@@ -98,7 +98,7 @@ EXPERIMENTS = {
         "model_type": "TensorRing",
         "num_layer_tensor_ring": 1,
         "useAttention": True,
-        "use_modified_ring": True,
+        "ring_variant": "modified",
         "window_size": 4,
     },
     "experiment_9_ws4": {
@@ -106,7 +106,7 @@ EXPERIMENTS = {
         "model_type": "TensorRing",
         "num_layer_tensor_ring": 2,
         "useAttention": False,
-        "use_modified_ring": True,
+        "ring_variant": "modified",
         "window_size": 4,
     },
     "experiment_10_ws4": {
@@ -114,113 +114,177 @@ EXPERIMENTS = {
         "model_type": "TensorRing",
         "num_layer_tensor_ring": 2,
         "useAttention": True,
-        "use_modified_ring": True,
+        "ring_variant": "modified",
+        "window_size": 4,
+    },
+    # Tensor Ring RX - Window Size 4
+    "experiment_11_ws4": {
+        "name": "QLSTM Tensor Ring RX 1 layer (WS=4)",
+        "model_type": "TensorRing",
+        "num_layer_tensor_ring": 1,
+        "useAttention": False,
+        "ring_variant": "rx",
+        "window_size": 4,
+    },
+    "experiment_12_ws4": {
+        "name": "QLSTM Tensor Ring RX 1 layer with Attention (WS=4)",
+        "model_type": "TensorRing",
+        "num_layer_tensor_ring": 1,
+        "useAttention": True,
+        "ring_variant": "rx",
+        "window_size": 4,
+    },
+    "experiment_13_ws4": {
+        "name": "QLSTM Tensor Ring RX 2 layers (WS=4)",
+        "model_type": "TensorRing",
+        "num_layer_tensor_ring": 2,
+        "useAttention": False,
+        "ring_variant": "rx",
+        "window_size": 4,
+    },
+    "experiment_14_ws4": {
+        "name": "QLSTM Tensor Ring RX 2 layers with Attention (WS=4)",
+        "model_type": "TensorRing",
+        "num_layer_tensor_ring": 2,
+        "useAttention": True,
+        "ring_variant": "rx",
         "window_size": 4,
     }
-}
-"""
         ,
-        # Classic models - Window Size 72
-        "experiment_classic_1_ws72": {
-            "name": "Classic LSTM (WS=72)",
+        # Classic models - Window Size 16
+        "experiment_classic_1_ws16": {
+            "name": "Classic LSTM (WS=16)",
             "model_type": "Classic",
             "num_layer_tensor_ring": 0,
             "useAttention": False,
-            "use_modified_ring": False,
-            "window_size": 72,
+            "ring_variant": "standard",
+            "window_size": 16,
         },
-        "experiment_classic_2_ws72": {
-            "name": "Classic LSTM with Attention (WS=72)",
+        "experiment_classic_2_ws16": {
+            "name": "Classic LSTM with Attention (WS=16)",
             "model_type": "Classic",
             "num_layer_tensor_ring": 0,
             "useAttention": True,
-            "use_modified_ring": False,
-            "window_size": 72,
+            "ring_variant": "standard",
+            "window_size": 16,
         },
-        # Standard QLSTM - Window Size 72
-        "experiment_1_ws72": {
-            "name": "QLSTM standard (WS=72)",
+        # Standard QLSTM - Window Size 16
+        "experiment_1_ws16": {
+            "name": "QLSTM standard (WS=16)",
             "model_type": "QLSTM",
             "num_layer_tensor_ring": 0,
             "useAttention": False,
-            "use_modified_ring": False,
-            "window_size": 72,
+            "ring_variant": "standard",
+            "window_size": 16,
         },
-        "experiment_2_ws72": {
-            "name": "QLSTM standard with Attention (WS=72)",
+        "experiment_2_ws16": {
+            "name": "QLSTM standard with Attention (WS=16)",
             "model_type": "QLSTM",
             "num_layer_tensor_ring": 0,
             "useAttention": True,
-            "use_modified_ring": False,
-            "window_size": 72,
+            "ring_variant": "standard",
+            "window_size": 16,
         },
-        # Tensor Ring Standard - Window Size 72
-        "experiment_3_ws72": {
-            "name": "QLSTM Tensor Ring 1 layer (WS=72)",
+        # Tensor Ring Standard - Window Size 16
+        "experiment_3_ws16": {
+            "name": "QLSTM Tensor Ring 1 layer (WS=16)",
             "model_type": "TensorRing",
             "num_layer_tensor_ring": 1,
             "useAttention": False,
-            "use_modified_ring": False,
-            "window_size": 72,
+            "ring_variant": "standard",
+            "window_size": 16,
         },
-        "experiment_4_ws72": {
-            "name": "QLSTM Tensor Ring 1 layer with Attention (WS=72)",
+        "experiment_4_ws16": {
+            "name": "QLSTM Tensor Ring 1 layer with Attention (WS=16)",
             "model_type": "TensorRing",
             "num_layer_tensor_ring": 1,
             "useAttention": True,
-            "use_modified_ring": False,
-            "window_size": 72,
+            "ring_variant": "standard",
+            "window_size": 16,
         },
-        "experiment_5_ws72": {
-            "name": "QLSTM Tensor Ring 2 layers (WS=72)",
+        "experiment_5_ws16": {
+            "name": "QLSTM Tensor Ring 2 layers (WS=16)",
             "model_type": "TensorRing",
             "num_layer_tensor_ring": 2,
             "useAttention": False,
-            "use_modified_ring": False,
-            "window_size": 72,
+            "ring_variant": "standard",
+            "window_size": 16,
         },
-        "experiment_6_ws72": {
-            "name": "QLSTM Tensor Ring 2 layers with Attention (WS=72)",
+        "experiment_6_ws16": {
+            "name": "QLSTM Tensor Ring 2 layers with Attention (WS=16)",
             "model_type": "TensorRing",
             "num_layer_tensor_ring": 2,
             "useAttention": True,
-            "use_modified_ring": False,
-            "window_size": 72,
+            "ring_variant": "standard",
+            "window_size": 16,
         },
-        # Tensor Ring Modified - Window Size 72
-        "experiment_7_ws72": {
-            "name": "QLSTM Tensor Ring Modified 1 layer (WS=72)",
+        # Tensor Ring Modified - Window Size 16
+        "experiment_7_ws16": {
+            "name": "QLSTM Tensor Ring Modified 1 layer (WS=16)",
             "model_type": "TensorRing",
             "num_layer_tensor_ring": 1,
             "useAttention": False,
-            "use_modified_ring": True,
-            "window_size": 72,
+            "ring_variant": "modified",
+            "window_size": 16,
         },
-        "experiment_8_ws72": {
-            "name": "QLSTM Tensor Ring Modified 1 layer with Attention (WS=72)",
+        "experiment_8_ws16": {
+            "name": "QLSTM Tensor Ring Modified 1 layer with Attention (WS=16)",
             "model_type": "TensorRing",
             "num_layer_tensor_ring": 1,
             "useAttention": True,
-            "use_modified_ring": True,
-            "window_size": 72,
+            "ring_variant": "modified",
+            "window_size": 16,
         },
-        "experiment_9_ws72": {
-            "name": "QLSTM Tensor Ring Modified 2 layers (WS=72)",
+        "experiment_9_ws16": {
+            "name": "QLSTM Tensor Ring Modified 2 layers (WS=16)",
             "model_type": "TensorRing",
             "num_layer_tensor_ring": 2,
             "useAttention": False,
-            "use_modified_ring": True,
-            "window_size": 72,
+            "ring_variant": "modified",
+            "window_size": 16,
         },
-        "experiment_10_ws72": {
-            "name": "QLSTM Tensor Ring Modified 2 layers with Attention (WS=72)",
+        "experiment_10_ws16": {
+            "name": "QLSTM Tensor Ring Modified 2 layers with Attention (WS=16)",
             "model_type": "TensorRing",
             "num_layer_tensor_ring": 2,
             "useAttention": True,
-            "use_modified_ring": True,
-            "window_size": 72,
+            "ring_variant": "modified",
+            "window_size": 16,
         },
-    """
+        # Tensor Ring RX - Window Size 16
+        "experiment_11_ws16": {
+            "name": "QLSTM Tensor Ring RX 1 layer (WS=16)",
+            "model_type": "TensorRing",
+            "num_layer_tensor_ring": 1,
+            "useAttention": False,
+            "ring_variant": "rx",
+            "window_size": 16,
+        },
+        "experiment_12_ws16": {
+            "name": "QLSTM Tensor Ring RX 1 layer with Attention (WS=16)",
+            "model_type": "TensorRing",
+            "num_layer_tensor_ring": 1,
+            "useAttention": True,
+            "ring_variant": "rx",
+            "window_size": 16,
+        },
+        "experiment_13_ws16": {
+            "name": "QLSTM Tensor Ring RX 2 layers (WS=16)",
+            "model_type": "TensorRing",
+            "num_layer_tensor_ring": 2,
+            "useAttention": False,
+            "ring_variant": "rx",
+            "window_size": 16,
+        },
+        "experiment_14_ws16": {
+            "name": "QLSTM Tensor Ring RX 2 layers with Attention (WS=16)",
+            "model_type": "TensorRing",
+            "num_layer_tensor_ring": 2,
+            "useAttention": True,
+            "ring_variant": "rx",
+            "window_size": 16,
+        },
+}
 
 
 
@@ -320,6 +384,7 @@ def build_model(
     model_type = config["model_type"]
     use_attention = config["useAttention"]
     num_layer_tensor_ring = config["num_layer_tensor_ring"]
+    ring_variant = config.get("ring_variant", "standard")
 
     if use_attention:
         n_qlayers = default_n_qlayers
@@ -333,6 +398,7 @@ def build_model(
             n_qlayers=n_qlayers,
             model_type=model_type,
             backend=backend,
+            ring_variant=ring_variant,
         )
 
     if model_type == "TensorRing":
@@ -341,6 +407,7 @@ def build_model(
             hidden_units=hidden_dim,
             n_qubits=n_qubits,
             n_qlayers=max(1, num_layer_tensor_ring),
+            ring_variant=ring_variant,
         )
 
     return QShallowRegressionLSTM(
@@ -432,7 +499,7 @@ set_seed(SEED)
 hidden_dim = 4
 n_qubits = 4
 n_qlayers = 1
-epochs = 500
+epochs = 100
 learning_rate = 0.001
 patience = 5
 train_samples = 24102
@@ -445,6 +512,10 @@ os.makedirs(models_dir, exist_ok=True)
 # Create plot directory if it doesn't exist
 plot_dir = os.path.join(os.path.dirname(__file__), "plot")
 os.makedirs(plot_dir, exist_ok=True)
+
+# Create predictions directory if it doesn't exist
+predictions_dir = os.path.join(os.path.dirname(__file__), "predictions")
+os.makedirs(predictions_dir, exist_ok=True)
 
 # Prepare CSV file with header
 output_path = os.path.join(os.path.dirname(__file__), "experiment_results.csv")
@@ -483,7 +554,7 @@ else:
 
 # Pre-load datasets for both window sizes
 datasets_cache = {}
-for ws in [4, 72]:
+for ws in [4, 16]:
     print(f"\n{'='*80}")
     print(f"Loading Dataset with window_size={ws}...")
     print(f"{'='*80}")
@@ -587,13 +658,23 @@ for exp_id, config in EXPERIMENTS.items():
     plt.close()
     print(f"Plot saved: {plot_path}")
 
+    # Save predictions CSV
+    predictions_filename = f"{exp_id}_predictions.csv"
+    predictions_path = os.path.join(predictions_dir, predictions_filename)
+    with open(predictions_path, mode="w", newline="", encoding="utf-8") as pred_file:
+        pred_writer = csv.writer(pred_file)
+        pred_writer.writerow(["ground_truth", "prediction"])
+        for gt, pred in zip(y_test_np, preds_np):
+            pred_writer.writerow([gt, pred])
+    print(f"Predictions saved: {predictions_path}")
+
     # Prepare result row
     result_row = {
         "name": config["name"],
         "modelType": config["model_type"],
         "num_layer_tensor_ring": config["num_layer_tensor_ring"],
         "useAttention": config["useAttention"],
-        "use_modified_ring": config["use_modified_ring"],
+        "use_modified_ring": config.get("ring_variant", "standard"),
         "window_size": window_size,
         "total_epochs": epochs,
         "used_epochs": used_epochs,

@@ -43,6 +43,7 @@ def analyze_expressivity_by_qubits(
         ('QLSTM', 'qlstm', 1, False),
         ('Tensor Ring', 'tensor_ring', 1, False),
         ('Tensor Ring Modified', 'tensor_ring', 1, True),
+        ('Tensor Ring RX', 'tensor_ring_rx', 1, False),
     ]
     
     for n_qubits in qubit_range:

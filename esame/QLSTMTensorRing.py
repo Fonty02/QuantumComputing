@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import pennylane as qml
 import numpy as np
-from tensorRing import tensor_ring, tensor_ring_modified
+from tensorRing import tensor_ring, tensor_ring_modified, tensor_ring_rx
 
 
 def create_window(df: list, window_size=3):
@@ -54,7 +54,7 @@ class QLSTMTensorRing(nn.Module):
                  return_sequences=False,
                  return_state=False,
                  backend="default.qubit",
-                 use_modified_ring=False):
+                 ring_variant="standard"):
         super(QLSTMTensorRing, self).__init__()
         
         self.n_inputs = input_size
@@ -66,6 +66,7 @@ class QLSTMTensorRing(nn.Module):
         self.batch_first = batch_first
         self.return_sequences = return_sequences
         self.return_state = return_state
+        self.ring_variant = ring_variant
 
         self.wires_forget = range(self.n_qubits)
         self.wires_input = range(self.n_qubits)
@@ -77,11 +78,15 @@ class QLSTMTensorRing(nn.Module):
         self.dev_update = qml.device(self.backend, wires=self.wires_update)
         self.dev_output = qml.device(self.backend, wires=self.wires_output)
 
-        if use_modified_ring:
+        if ring_variant == "modified":
             self.ring_circuit, self.num_ring_params = tensor_ring_modified(
                 self.n_qubits, reps=self.n_qlayers
             )
-        else:
+        elif ring_variant == "rx":
+            self.ring_circuit, self.num_ring_params = tensor_ring_rx(
+                self.n_qubits, reps=self.n_qlayers
+            )
+        else:  # standard
             self.ring_circuit, self.num_ring_params = tensor_ring(
                 self.n_qubits, reps=self.n_qlayers
             )
@@ -237,7 +242,7 @@ class QShallowRegressionLSTMTensorRing(nn.Module):
     Simple architecture: QLSTM (Tensor Ring) -> Linear layer for regression tasks.
     """
     
-    def __init__(self, num_sensors, hidden_units, n_qubits=4, n_qlayers=1, use_modified_ring=False):
+    def __init__(self, num_sensors, hidden_units, n_qubits=4, n_qlayers=1, ring_variant="standard"):
         super().__init__()
         self.num_sensors = num_sensors
         self.hidden_units = hidden_units
@@ -249,7 +254,7 @@ class QShallowRegressionLSTMTensorRing(nn.Module):
             batch_first=True,
             n_qubits=n_qubits,
             n_qlayers=n_qlayers,
-            use_modified_ring=use_modified_ring
+            ring_variant=ring_variant
         )
         self.linear = nn.Linear(in_features=self.hidden_units, out_features=1)
 

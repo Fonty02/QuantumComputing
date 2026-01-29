@@ -351,11 +351,13 @@ def compute_expressivity_for_ansatz(
             qml.layer(ansatz_circuit, n_layers, weights, wires_type=wires)
             return qml.probs(wires=wires)
             
-    elif ansatz_type in ['tensor_ring', 'tensor_ring_modified']:
-        from tensorRing import tensor_ring, tensor_ring_modified
+    elif ansatz_type in ['tensor_ring', 'tensor_ring_modified', 'tensor_ring_rx']:
+        from tensorRing import tensor_ring, tensor_ring_modified, tensor_ring_rx
         
         if use_modified or ansatz_type == 'tensor_ring_modified':
             ring_fn, n_params = tensor_ring_modified(n_qubits, reps=n_layers)
+        elif ansatz_type == 'tensor_ring_rx':
+            ring_fn, n_params = tensor_ring_rx(n_qubits, reps=n_layers)
         else:
             ring_fn, n_params = tensor_ring(n_qubits, reps=n_layers)
         
@@ -421,6 +423,8 @@ def compare_expressivity(
         ('Tensor Ring (2 layers)', 'tensor_ring', 2, False),
         ('Tensor Ring Modified (1 layer)', 'tensor_ring', 1, True),
         ('Tensor Ring Modified (2 layers)', 'tensor_ring', 2, True),
+        ('Tensor Ring RX (1 layer)', 'tensor_ring_rx', 1, False),
+        ('Tensor Ring RX (2 layers)', 'tensor_ring_rx', 2, False),
     ]
     
     for name, ansatz_type, n_layers, use_modified in configurations:
