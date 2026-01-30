@@ -499,7 +499,7 @@ set_seed(SEED)
 hidden_dim = 4
 n_qubits = 4
 n_qlayers = 1
-epochs = 100
+epochs = 250
 learning_rate = 0.001
 patience = 5
 train_samples = 24102
